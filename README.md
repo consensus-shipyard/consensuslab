@@ -11,7 +11,10 @@ ConsensusLab’s short to mid-term focus is on rearchitecting and implementing F
 
 ## Research Endeavours
 
-See our [launch blog post](https://research.protocol.ai/blog/2021/consensuslab-supercharging-our-consensus-research/) for high-level information. We will be adding more information on open problems and active endeavours to this repository (as issues or code).
+Our work is divided into three main areas. We have a tracking issue for each:
+* [Blue: Hierarchical Consensus](https://github.com/protocol/ConsensusLab/issues/3)
+* [Yellow: General Consensus Layer](https://github.com/protocol/ConsensusLab/issues/2)
+* [Green: VM / Runtime](https://github.com/protocol/ConsensusLab/issues/1)
 
 ## Publications, Talks & Trainings
 
