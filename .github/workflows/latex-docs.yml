@@ -1,0 +1,47 @@
+name: Build and commit LaTeX projects
+on:
+  schedule:
+    - cron: '0 0 1,15 * *'
+  workflow_dispatch:
+
+jobs:
+  build-latex:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout consensuslab repo
+        uses: actions/checkout@v2
+        with:
+          ref: ${{ github.head_ref }}
+          path: local
+
+      - name: Checkout overleaf repo (B1)
+        run:
+          git clone https://${{ secrets.OVERLEAF_USERNAME }}:${{ secrets.OVERLEAF_PASSWORD }}@git.overleaf.com/6151e9f56d29d5287ad290a7 overleaf
+      - name: Render LaTeX
+        uses: xu-cheng/latex-action@v2
+        with:
+          working_directory: overleaf
+          root_file: main.tex
+      - name: Move rendered pdf
+        run: |
+          mv overleaf/main.pdf local/docs/b1.pdf
+          rm -rf overleaf
+
+      - name: Checkout overleaf repo (B2)
+        run:
+          git clone https://${{ secrets.OVERLEAF_USERNAME }}:${{ secrets.OVERLEAF_PASSWORD }}@git.overleaf.com/611d37cf28642370db6ceeb1 overleaf
+      - name: Render LaTeX
+        uses: xu-cheng/latex-action@v2
+        with:
+          working_directory: overleaf
+          root_file: main.tex
+      - name: Move rendered pdf
+        run: |
+          mv overleaf/main.pdf local/docs/b2.pdf
+          rm -rf overleaf
+
+      - name: Commit if diff
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          repository: local
+          commit_message: Update overleaf document
