@@ -22,6 +22,7 @@ jobs:
         with:
           working_directory: overleaf
           root_file: main.tex
+          extra_system_packages: py-pygments
       - name: Move rendered pdf
         run: |
           mv overleaf/main.pdf local/docs/b1.pdf
@@ -35,6 +36,7 @@ jobs:
         with:
           working_directory: overleaf
           root_file: main.tex
+          extra_system_packages: py-pygments
       - name: Move rendered pdf
         run: |
           mv overleaf/main.pdf local/docs/b2.pdf
