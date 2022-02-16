@@ -7,7 +7,9 @@ assignees: ""
 
 ---
 
-**Default to project issues for discussion, whenever appropriate.**
+**For work tracking purposes.**
+
+Refer to the parent project issue for discussion and resources.
 
 <!--TODO-->
 <!--Assign the issue to the team-->
