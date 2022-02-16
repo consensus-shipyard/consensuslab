@@ -18,6 +18,8 @@ Our work is divided into three main areas. We have a tracking issue for each:
 * [Yellow: General Consensus Layer](https://github.com/protocol/ConsensusLab/issues/2)
 * [Green: VM / Runtime](https://github.com/protocol/ConsensusLab/issues/1)
 
+We also have a detailed [ZenHub roadmap](https://app.zenhub.com/workspaces/consensuslab-60f84a7fa2395a0011e4134c/roadmap?invite=true), which you may be able to access.
+
 ## Publications, Talks & Trainings
 
 See the [ConsensusLab page in the PL Research website](https://research.protocol.ai/groups/consensuslab/).
