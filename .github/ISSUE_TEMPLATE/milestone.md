@@ -9,7 +9,7 @@ assignees: ""
 
 **For work tracking purposes.**
 
-Refer to the parent project issue for discussion and resources.
+Refer to the parent project issue for high-level discussion and resources.
 
 <!--TODO-->
 <!--Assign the issue to the team-->
