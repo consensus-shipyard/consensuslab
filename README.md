@@ -18,12 +18,18 @@ Our work is divided into three main areas. We have a tracking issue for each:
 * [Yellow: General Consensus Layer](https://github.com/protocol/ConsensusLab/issues/2)
 * [Green: VM / Runtime](https://github.com/protocol/ConsensusLab/issues/1)
 
-We also have a detailed [ZenHub roadmap](https://app.zenhub.com/workspaces/consensuslab-60f84a7fa2395a0011e4134c/roadmap?invite=true), which you may be able to access.
+For each of our active projects, you'll be able to find resources, talks, demos, and notes from our weekly calls. If you're interested in joining any of our meetings, please reach out!
+
+We also have a detailed [ZenHub roadmap](https://app.zenhub.com/workspaces/consensuslab-60f84a7fa2395a0011e4134c/roadmap?invite=true), which will give you a bird's eye view of all of our projects.
 
 ## Publications, Talks & Trainings
 
 See the [ConsensusLab page in the PL Research website](https://research.protocol.ai/groups/consensuslab/).
 
-## Hiring
+## Talk to us
+
+We work in the open! Comment on the issues in this repository, post new issues, and come talk to us on #consensus, in the [Filecoin Slack workspace](https://filecoin.io/slack).
+
+## Join us
 
 We are working to expand the team with Research Scientists and Research Engineers. Visit PL's [job page](https://protocol.ai/join/) to learn more and apply.
