@@ -26,4 +26,4 @@ See the [ConsensusLab page in the PL Research website](https://research.protocol
 
 ## Hiring
 
-We are working to expand the team with Research Scientists and Research Engineers. Visit PL's [open jobs page](https://jobs.lever.co/protocol?team=Research%20Development) to learn more and apply.
+We are working to expand the team with Research Scientists and Research Engineers. Visit PL's [job page](https://protocol.ai/join/) to learn more and apply.
