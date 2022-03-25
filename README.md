@@ -20,7 +20,7 @@ Our work is divided into three main areas. We have a tracking issue for each:
 
 For each of our active projects, you'll be able to find resources, talks, demos, and notes from our weekly calls. If you're interested in joining any of our meetings, please reach out!
 
-We also have a detailed [ZenHub roadmap](https://app.zenhub.com/workspaces/consensuslab-60f84a7fa2395a0011e4134c/roadmap?invite=true), which will give you a bird's eye view of all of our projects.
+We also have a detailed [ZenHub roadmap](https://app.zenhub.com/workspaces/consensuslab-60f84a7fa2395a0011e4134c/roadmap?invite=true), which will give you a bird's eye view of all of our projects. If you install the [ZenHub browser extension](https://www.zenhub.com/extension), you'll have a much better time navigating this repo.
 
 ## Publications, Talks, and Demos
 
