@@ -28,7 +28,7 @@ See the [ConsensusLab page in the PL Research website](https://research.protocol
 
 ## Talk to us
 
-We work in the open! Comment on the issues in this repository, post new issues, and come talk to us on #consensus, in the [Filecoin Slack workspace](https://filecoin.io/slack).
+We work in the open! Take part in our [discussions](https://github.com/protocol/ConsensusLab/discussions), comment on issues, and joins us at #consensus in the [Filecoin Slack workspace](https://filecoin.io/slack).
 
 ## Join us
 
