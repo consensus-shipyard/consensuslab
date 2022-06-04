@@ -1,5 +1,4 @@
-
-# ConsensusLab
+<div align="center"><img src="https://user-images.githubusercontent.com/547492/172008693-6226db35-0f34-4885-941b-20cddadacad7.svg" width=600 /></div>
 
 ## Mission
 
