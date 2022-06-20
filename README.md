@@ -21,9 +21,13 @@ For each of our active projects, you'll be able to find resources, talks, demos,
 
 We also have a detailed [ZenHub roadmap](https://app.zenhub.com/workspaces/consensuslab-60f84a7fa2395a0011e4134c/roadmap?invite=true), which will give you a bird's eye view of all of our projects. If you install the [ZenHub browser extension](https://www.zenhub.com/extension), you'll have a much better time navigating this repo.
 
-## Publications, Talks, and Demos
+## Team, Publications, Talks, and Demos
 
 See the [ConsensusLab page in the PL Research website](https://research.protocol.ai/groups/consensuslab/) and our [YouTube playlist](https://www.youtube.com/playlist?list=PLhuBigpl7lqtqT8HLuk0mLVeG76Koa9St).
+
+## Weekly updates
+
+We publish weekly [SitReps](https://www.notion.so/pl-strflt/Weekly-SitRep-706a1e41f7ea45c9a89b17aadb63b2fe) summarising the team's activities.
 
 ## Talk to us
 
