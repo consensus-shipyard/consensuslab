@@ -2,7 +2,7 @@
 
 ## Mission
 
-ConsensusLab explores fundamental problems of control, coordination, and consistency in distributed systems.
+ConsensusLab explores fundamental problems of coordination, consistency, and scalability in decentralised systems.
 
 ## Goals
 
