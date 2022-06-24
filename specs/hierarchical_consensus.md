@@ -71,7 +71,7 @@ In traditional distributed computing, one possible approach to overcoming this l
 
 The main challenge with applying traditional sharding to the Byzantine fault-tolerant context of the blockchain lies in the security/performance tradeoff. As miners are assigned to shards, there is a danger of diluting security when compared to the original single-chain (single-shard) solution. In both proof-of-work and proof-of-stake (PoS) blockchains, sharding may give the attacker the ability to compromise a single shard with only a  fraction of the mining power, potentially compromising the system as a whole. Such attacks are often referred to as _1\% attacks_. To circumvent them, sharding systems need to periodically reassign miners to shards in an unpredictable way, so as to cope with a semi-dynamic adversary. We believe that this traditional approach to scaling, which considers the system as a monolith, is not suitable for decentralized blockchains due to their complexity.  <!--and the fact that sharded systems reshuffle state without the consent of its owners, disrupting use cases that benefit from finer control over the system topology.-->
 
-With __Hierarchical Consensus__ we depart from the traditional sharding approach and instead of algorithmically assigning node membership and load balancing the distribution of the state, we follow an approach where users and miners are grouped into subnets in which they can freely partake. Users (i.e. network participants) can spawn new independent networks, or child subnets, from the one they are operating in. __Each subnet can run its own independent consensus algorithm and set its own security and performance guarantees.__ Subnets in the system are organized hierarchically: each has one parent subnet and any number of child subnets, except for the root subnet (called _root network_ or _rootnet_), which has no parent and is the initial anchor of trust. To mitigate the 1\% attacks pertinent to traditional sharding, subnets in hierarchical consensus are firewalled, in the sense that a security violation in a given subnet is limited, in effect, to that particular subnet and its children, with bounded economic impact on its ancestors. This bounded impact of an attack is, at most, the circulating supply of the parent token in the child subnet. Moreover, ancestor subnets help secure their descendant subnets through _checkpointing_, which helps alleviate attacks on a child subnet, such as long-range and related attacks in the case of a PoS-based subnet.
+With __[Hierarchical Consensus](https://research.protocol.ai/publications/hierarchical-consensus-a-horizontal-scaling-framework-for-blockchains/)__ we depart from the traditional sharding approach and instead of algorithmically assigning node membership and load balancing the distribution of the state, we follow an approach where users and miners are grouped into subnets in which they can freely partake. Users (i.e. network participants) can spawn new independent networks, or child subnets, from the one they are operating in. __Each subnet can run its own independent consensus algorithm and set its own security and performance guarantees.__ Subnets in the system are organized hierarchically: each has one parent subnet and any number of child subnets, except for the root subnet (called _root network_ or _rootnet_), which has no parent and is the initial anchor of trust. To mitigate the 1\% attacks pertinent to traditional sharding, subnets in hierarchical consensus are [firewalled](https://ieeexplore.ieee.org/abstract/document/8835275), in the sense that a security violation in a given subnet is limited, in effect, to that particular subnet and its children, with bounded economic impact on its ancestors. This bounded impact of an attack is, at most, the circulating supply of the parent token in the child subnet. Moreover, ancestor subnets help secure their descendant subnets through _checkpointing_, which helps alleviate attacks on a child subnet, such as long-range and related attacks in the case of a PoS-based subnet.
 
 Finally, subnets can semlessly communicate and interact with state hosted in other subnets through cross-net messages.
 
@@ -166,7 +166,7 @@ type SubnetActor interface{
     // signed checkpoint for its propagation. This function performs all the
     // subnet-specific checks required for the final commitment of the 
     // checkpoint in the SCA (e.g. in the reference implementation of
-    // the SubnetActor, SubmitCheckpoints waits for 2/3 of the validators
+    // the SubnetActor, SubmitCheckpoints waits for more than 2/3 of the validators
     // to sign a valid checkpoint to propagate it to the SCA).
     // 
     // This function must propagate a `CommitChildCheckpoint` message to the SCA
@@ -424,6 +424,7 @@ type Consensus interface {
     Type() hierarchical.ConsensusType
 }
 ```
+An example implementation of a BFT-like consensus protocol for HC can be found [here](https://github.com/filecoin-project/mir)
 
 ## Lifecycle of a subnet
 The following section presents an overview of the lifecycle of a subnet.
@@ -510,36 +511,42 @@ Up(subnetID) (SubnetID, error)
 ## Hierarchical Address
 HC uses [Filecoin addresses](https://spec.filecoin.io/#section-appendix.address) for its operation. In order to deduplicate addresses from different subnets, HC introduces a new address protocol with ID `4` called _hierarchical address (HA)_. A hierarchical address is just a raw Filecoin address with additional information about the subnet ID the address refers to. 
 
-There are 2 ways a Filecoin address can be represented. An address appearing on chain will always be formatted as raw bytes. An address may also be encoded to a string, this encoding includes a checksum and network prefix. An address encoded as a string will never appear on chain, this format is used for sharing among humans. A hierarchical address has the same structure of a plain Filecoin address but its payload is conformed by:
-- __SubnetID (74 bytes)__: String representation of the subnet ID (e.g. `/root/f01010`). The maximum size is set to support at most for 3 levels of subnets using subnet IDs with the maximum id possible (which may never be the case). The size of `/root` is 5 bytes, and each new level can have at most size `23` (`22` bytes for the number of characters of the `MAX_UINT64` ID address and 1 byte per separator).
+There are 2 ways a Filecoin address can be represented. An address appearing on chain will always be formatted as raw bytes. An address may also be encoded to a string, this encoding includes a checksum and network prefix. An address encoded as a string will never appear on chain, this format is used for sharing among humans. A hierarchical address has the same structure of a plain Filecoin address but its payload is a 140 bytes fixed-length array conformed by:
+- __Levels (1 byte)__: Represents the number of levels in the `SubnetID` included the address. This is exclusively used to avoid having large string addresses when the number of levels of the `SubnetID` is small and the HA payload includes a lot of padded zeros at the end.
+- __SubnetID (74 bytes)__: String representation of the subnet ID (e.g. `/root/f01010`). The maximum size is set to support at most 3 levels of subnets using subnet IDs with the maximum id possible (which may never be the case, so effectively this container is able to support significantly more subnet levels). The size of `/root` is 5 bytes, and each new level can have at most size `23` (`22` bytes for the number of characters of the `MAX_UINT64` ID address and 1 byte per separator).
 > TODO: We could compress by making using varints instead of the string representation for IDs in `SubnetID`
 - __Separator (1 byte)__: One character used to separate the Subnet ID from the raw Filecoin address. The specific separator used for HC is the`:` string.
 - __RawAddress (up to 66 bytes)__: Byte representation of the raw Filecoin address. The maximum size is determined by the size of the SECPK address.
+- __End character (1 byte)__: One character used to flag the end of the useful payload and the beginning of the zero padding up to the 140 bytes fixed-length of the address payload. The specific end character used for HC is the `,`.
 
-> Structure of Hierarchial Address
+> Structure of Hierarchical Address
 ```
-|----------|------------------------------------------------------------------------------------------------|
-| protocol |        payload                                                                                 |
-|----------|------------------------------------------------------------------------------------------------|
-|    4     | subnetID (up to 74 bytes) | separator (1 byte) | raw address (up to 66 bytes) |
+|----------|-----------------------------------------------------------------------------------------------------------------------------------|
+| protocol |                                                            payload                                                                |
+|----------|-----------------------------------------------------------------------------------------------------------------------------------|
+|    4     | levels (1 byte) | subnetID (up to 74 bytes) | separator (1 byte) | raw address (up to 66 bytes) | end (1 byte) | optional padding |
+|----------|-----------------------------------------------------------------------------------------------------------------------------------|
 ```
 
 The payload of an HA looks something like:
 ```
-| /root/f01001 | : | <payload raw address bytes> |``
+| /root/f01001 | : | <payload raw address bytes> | , | optional zero padding``
 ```
 
-With hierarchical addresses two new functions are introduced to Filecoin addresses:
+With hierarchical addresses three new functions are introduced to Filecoin addresses:
 - `Raw()`: Returns the raw address of the hierarchical address. If it is not an HA, it still returns the corresponding raw address.
 - `Subnet()`: It returns the subnet ID of the HA. It returns an error or an `Subnet.Undef` if the address is not an HA.
-- `PrettyString()`: Returns a beutified version of an HA address like `/root/f0100:<raw address>`. This is method is only available for HA. For the rest of addresses it just returns `String()`. 
+- `Levels()`: Returns the number of levels in the `SubnetID` included in the HA address.
+- `PrettyString()`: Returns a beautified version of an HA address like `/root/f0100:<raw address>`. This is method is only available for HA. For the rest of addresses it just returns `String()`. 
+
+The string representation of HA addresses is encoded as every other Filecoin address (see [spec](https://spec.filecoin.io/#section-appendix.address.string)) with the difference that the size of the payload used to encode the string representation of the address differs to remove unnecessary padding. Thus, the byte payload from the address is truncated to the following size `HA_ROOT_LEN + (NUM_LEVELS - 1) * HA_LEVEL_LEN` before encoding the string address where `NUM_LEVELS` is the number of levels in the `SubnetID` of the address and `HA_ROOT_LEN = 5` and `HA_LEVEL_LEN = 23`;
 
 Finally, a pair of keys from a user control the same address in every subnet in the system. Thus, the raw address determines the ownership of a specific HA. 
 
 ## Checkpointing
 Checkpoints are used to anchor a subnet's security to that of its parent network, as well as to propagate information from a child chain to other subnets in the system. Checkpoints for a subnet can be verified at any point using the state of the subnet chain which can then be used to generate proofs of misbehaviors in the subnet (or so-called _fraud/fault proofs_) which, in turn, can be used for penalizing misbehaving entities (_"slashing"_). See [detectable misbehaviors](#Detectable-misbehaviors "Detectable misbehaviors") for further details.
 
-Checkpoints need to be signed by miners of a child chain and committed to the parent chain through their corresponding `SA`. The specific signature policy is defined in the `SA` and determines the type and minimum number of signatures required for a checkpoint to be accepted and validated by the `SA` for its propagation to the top chain. Different signature schemes may be used here, including multi-signatures or threshold signatures among subnet miners. For instance, in the reference implementation of `SA`, the actor waits for `2/3` of the validators in the subnet to send the valid checkpoint signed before propagating it to the `SCA` for commitment. Alternative verification policies for a subnet can be implemented in the `SubmitCheckpoint()` function of the subnet actor interface. 
+Checkpoints need to be signed by miners of a child chain and committed to the parent chain through their corresponding `SA`. The specific signature policy is defined in the `SA` and determines the type and minimum number of signatures required for a checkpoint to be accepted and validated by the `SA` for its propagation to the top chain. Different signature schemes may be used here, including multi-signatures or threshold signatures among subnet miners. For instance, in the reference implementation of `SA`, the actor waits for more than `2/3` of the validators in the subnet to send the valid checkpoint signed before propagating it to the `SCA` for commitment. Alternative verification policies for a subnet can be implemented in the `SubmitCheckpoint()` function of the subnet actor interface. 
 
 In order for a new checkpoint to be accepted for commitment in `SCA`, the source of the message `CommitChildCheckpoint()` needs to be the address of the subnet actor of the corresponding subnet; the subnet needs to be in an `Active` state (i.e. its collateral is over `CollateralThreshold`); the epoch of the checkpoint should be a multiple of `CheckPeriod` and larger that that of the previous checkpoint; and the checkpoint must point to the `CID` of the previous checkpoint committed by the subnet. 
 
@@ -856,7 +863,7 @@ To overcome this issue, `SCA` in subnets include the `Save()` function and peers
 - Creating fraud/fault proofs from detectable misbehaviors in a subnet.
 - Migrating the state of a subnet and spawning a new subnet from the existing state of another network.
 
-> TODO: For this puropse, a `Persistence` interface will be explored and implemented in future iterations of the protocol. Ideally we should piggy-back from all the available storage in the Filecoin network, FVM native integration with storage primitives, and all the data retrievable work being done by CryptoNetLab.
+> TODO: For this purpose, a `Persistence` interface will be explored and implemented in future iterations of the protocol. Ideally we should piggy-back from all the available storage in the Filecoin network, FVM native integration with storage primitives, and all the data retrievability work being done by [CryptoNetLab](https://research.protocol.ai/groups/cryptonetlab/) or [Filecoin Saturn](https://github.com/filecoin-project/saturn-node).
 
 ## Atomic Execution Protocol
 An issue arises when state changes need to be atomic and impact the state of different subnets. A simple example of this is the atomic swap of two assets hosted in different subnets. The state change in the subnets needs to be atomic, and it requires from state that lives in both subnets. To handle these atomic transactions, the parties involved in the execution can choose any subnet in the hierarchy in which they both have a certain level of trust to migrate the corresponding state and orchestrate the execution. Generally, subnets will choose the closest common parent as the execution subnet, as they are already propagating their checkpoints to it and therefore leveraging shared trust.
