@@ -113,7 +113,7 @@ The two key modules that implement all the logic for hierarchical consensus are:
 > Snapshot of three subnets with their corrsponding actors.
 ![](https://hackmd.io/_uploads/ByfPG7IYq.png)
 
-The reference implementation of both actors in Filecoin currently target the FVM. The SCA is implemented as an additional ` builtin-actor` while SCA is an FVM user-defined actor.
+The reference implementation of both actors in Filecoin currently target the FVM. The SCA is implemented as an additional ` builtin-actor` while SA is an FVM user-defined actor.
 
 ## Subnet Actor (SA)
 The Subnet Actor interface the core functions and basic rules required for an actor to implement the logic for a new subnet. This approach gives users total flexibility to configure the consensus, security assumption, checkpointing strategy, policies, etc. of their new subnet so it fulfills all the needs of their use case.
