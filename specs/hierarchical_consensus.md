@@ -457,7 +457,7 @@ This naming convention allows to deterministically discover and interact with an
 
 Peers participating in a subnet are subscribed to all subnet-specific topics and are able to pick up the message. Subnet-specific pubsub topics are named also deterministically by using the subnet's ID as a suffix to the topic. Thus, subnets spawn (at least) three different topics for their operation: the `/fil/msgs/<subnetID>` topics to broadcast mempool messages; the `/fil/blocks/<subnetID>` topic to distribute new blocks; and the `/fil/resolver/<subnetID>` topic where cross-net content resolution messages are exchanged. These topics for subnet `/root/f0100` are identified as `/fil/msgs/root/f0100`, `/fil/blocks/root/f0100`, `/fil/resolver/root/f0100`, respectively.
 
-Peers can also poll the available child chains of a specific subnet sending a query to the `SCA` requesting to list its children. This allows any peer to traverse the full hierarchy and update their view of available subnets.
+Peers can also poll the available child chains of a specific subnet by sending a query to the `SCA` requesting to list its children. This allows any peer to traverse the full hierarchy and update their view of available subnets.
 
 In the future, HC may implement an additional DNS-like actor in the system that allows the discovery of subnets using human-readable names, thus making the transaction between a domain name and the underlying ID of a subnet.
 
