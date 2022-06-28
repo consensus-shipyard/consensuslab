@@ -93,7 +93,7 @@ The system starts with a _rootnet_ which, at first, keeps the entire state and p
 > High-level architecture of hierarchical consensus
 ![](https://hackmd.io/_uploads/BJVIhk8Fc.png)
 
-This subnet instantiates a new network with its own state, independent from the root network, replicated among the subset of participants of the overall system who are members of the subnet. From this point on, the new subnet processes transactions involving the state in the subnet independent to the root chain. Further subnets can then be spawned from any point in the hierarchy. 
+This subnet instantiates a new network with its own state, independent from the root network, replicated among the subset of participants of the overall system who are members of the subnet. From this point on, the new subnet processes transactions involving the state in the subnet independently of the root chain. Further subnets can then be spawned from any point in the hierarchy. 
 
 From the perspective of a peer in the network spawning or syncing with a new subnet starts a set of new processes to handle the independent state, mempool, and the specific [GossipSub](https://github.com/libp2p/specs/blob/master/pubsub/gossipsub/gossipsub-v1.1.md) topic to broadcast and receive subnet-specific messages.
 
