@@ -511,35 +511,28 @@ Up(subnetID) (SubnetID, error)
 ## Hierarchical Address
 HC uses [Filecoin addresses](https://spec.filecoin.io/#section-appendix.address) for its operation. In order to deduplicate addresses from different subnets, HC introduces a new address protocol with ID `4` called _hierarchical address (HA)_. A hierarchical address is just a raw Filecoin address with additional information about the subnet ID the address refers to. 
 
-There are 2 ways a Filecoin address can be represented. An address appearing on chain will always be formatted as raw bytes. An address may also be encoded to a string, this encoding includes a checksum and network prefix. An address encoded as a string will never appear on chain, this format is used for sharing among humans. A hierarchical address has the same structure of a plain Filecoin address but its payload is a 140 bytes fixed-length array conformed by:
-- __Levels (1 byte)__: Represents the number of levels in the `SubnetID` included the address. This is exclusively used to avoid having large string addresses when the number of levels of the `SubnetID` is small and the HA payload includes a lot of padded zeros at the end.
-- __SubnetID (74 bytes)__: String representation of the subnet ID (e.g. `/root/f01010`). The maximum size is set to support at most 3 levels of subnets using subnet IDs with the maximum id possible (which may never be the case, so effectively this container is able to support significantly more subnet levels). The size of `/root` is 5 bytes, and each new level can have at most size `23` (`22` bytes for the number of characters of the `MAX_UINT64` ID address and 1 byte per separator).
-> TODO: We could compress by making using varints instead of the string representation for IDs in `SubnetID`
-- __Separator (1 byte)__: One character used to separate the Subnet ID from the raw Filecoin address. The specific separator used for HC is the`:` string.
-- __RawAddress (up to 66 bytes)__: Byte representation of the raw Filecoin address. The maximum size is determined by the size of the SECPK address.
-- __End character (1 byte)__: One character used to flag the end of the useful payload and the beginning of the zero padding up to the 140 bytes fixed-length of the address payload. The specific end character used for HC is the `,`.
+There are 2 ways a Filecoin address can be represented. An address appearing on chain will always be formatted as raw bytes. An address may also be encoded to a string, this encoding includes a checksum and network prefix. An address encoded as a string will never appear on chain, this format is used for sharing among humans. A hierarchical address has the same structure of a plain Filecoin address. In this case, the payload of hierarchical addresses don't have a fixed size, and their size depend on the length of the `SubnetID` and the raw address used. Thus, the payload of a hierarchical address has the following structure:
+- __Subnet Size (1 byte)__: Represents the number of bytes of the `SubnetID` included the address as a `varInt`. It is used to delimit the bytes of the payload of the `SubnetID` with those of the raw address. Due to the maximum size of `SubnetID` the `varInt` will never use more than 1 byte. 
+- __Address Size (1 byte)__: Represents the size of the raw address as a `varInt` (which is also expected to be at most 1-byte-long). HA supports all types of filecoin addresses as raw addresses (from IDs to BLS and SECPK addresses). The size of the address flags the total size of the hierarchical address payload. Consequently, the total size of a hierarchical address' payload can be easily computed as `2 + SIZE_SUBNETID + SIZE_ADDR`. 
+- __SubnetID (up to 74 bytes)__: String representation of the subnet ID (e.g. `/root/f01010`). The maximum size is set to support at most 3 levels of subnets using subnet IDs with the maximum id possible (which may never be the case, so effectively this container is able to support significantly more subnet levels). The size of `/root` is 5 bytes, and each new level can have at most size `23` (`22` bytes for the number of characters of the `MAX_UINT64` ID address and 1 byte per separator).
+- __RawAddress (up to 66 bytes)__: Byte representation of the raw address. The maximum size is determined by the size of the SECPK address, the largest type of address in the Filecoin network.
 
-> Structure of Hierarchical Address
-```
-|----------|-----------------------------------------------------------------------------------------------------------------------------------|
-| protocol |                                                            payload                                                                |
-|----------|-----------------------------------------------------------------------------------------------------------------------------------|
-|    4     | levels (1 byte) | subnetID (up to 74 bytes) | separator (1 byte) | raw address (up to 66 bytes) | end (1 byte) | optional padding |
-|----------|-----------------------------------------------------------------------------------------------------------------------------------|
-```
+Thus, the maximum length of the payload of a hierarchical address is set to 142 bytes. The string representation of HA addresses is encoded as every other Filecoin address (see [spec](https://spec.filecoin.io/#section-appendix.address.string)).
 
-The payload of an HA looks something like:
+> Payload of Hierarchical Address
 ```
-| /root/f01001 | : | <payload raw address bytes> | , | optional zero padding``
+|----------|-------------------------------------------------------------------------------------------------------------------------------|
+| protocol |                                                            payload                          |                                 |
+|----------|-------------------------------------------------------------------------------------------------------------------------------|
+|    4     | subnet size (1 byte) | raw_addr size (1 byte) | subnetID (up to 74 bytes) | separator (1 byte) | raw address (up to 66 bytes) | 
+|----------|-------------------------------------------------------------------------------------------------------------------------------|
 ```
 
 With hierarchical addresses three new functions are introduced to Filecoin addresses:
 - `Raw()`: Returns the raw address of the hierarchical address. If it is not an HA, it still returns the corresponding raw address.
 - `Subnet()`: It returns the subnet ID of the HA. It returns an error or an `Subnet.Undef` if the address is not an HA.
 - `Levels()`: Returns the number of levels in the `SubnetID` included in the HA address.
-- `PrettyString()`: Returns a beautified version of an HA address like `/root/f0100:<raw address>`. This is method is only available for HA. For the rest of addresses it just returns `String()`. 
-
-The string representation of HA addresses is encoded as every other Filecoin address (see [spec](https://spec.filecoin.io/#section-appendix.address.string)) with the difference that the size of the payload used to encode the string representation of the address differs to remove unnecessary padding. Thus, the byte payload from the address is truncated to the following size `HA_ROOT_LEN + (NUM_LEVELS - 1) * HA_LEVEL_LEN` before encoding the string address where `NUM_LEVELS` is the number of levels in the `SubnetID` of the address and `HA_ROOT_LEN = 5` and `HA_LEVEL_LEN = 23`;
+- `PrettyString()`: Returns a beautified version of an HA address like `/root/f0100:<raw address string>`. This is method is only available for HA. For the rest of addresses it just returns `String()`. 
 
 Finally, a pair of keys from a user control the same address in every subnet in the system. Thus, the raw address determines the ownership of a specific HA. 
 
