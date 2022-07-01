@@ -689,7 +689,7 @@ What `ApplyMsg()` does to execute the cross-net message is:
 - Determine if the destination of the message is the current subnet or some other subnet in the hierarchy:
     - If the message is for the current subnet, the `From` and `To` of the cross-net message are translated into raw addresses, and a new `Send()` is called for the message in order to trigger the corresponding state changes in the subnet.
         - If the message is a top-down message, before the `Send()` of the cross-net messages, the amount of new tokens included in the `value` of the message (and that were locked in the `SCA` of the parent) need to be minted to allocate them to be used in the cross-net message. Thus, top-down messages mint new tokens in the subnet (with the consequent lock in the parent); while bottom-up messages burn native tokens in the subnet when they propagate bottom-up messages.
-If the message's destination is not the current subnet, the desination `Subnet` is checked to determine if the message needs to be propagated as a top-down or a bottom-up messages, conveniently adding it in `TopDownMsgs`of the next subnet in the messages path to destination, or by including it in the next checkpoint, respectively.
+If the message's destination is not the current subnet, the destination `Subnet` is checked to determine if the message needs to be propagated as a top-down or a bottom-up message, conveniently adding it in `TopDownMsgs`of the next subnet in the messages path to the destination, or by including it in the next checkpoint, respectively.
 - Increment the corresponding `AppliedNonces`.
 
 ### Top-down messages
