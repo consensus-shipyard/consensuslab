@@ -47,8 +47,8 @@ Each section of the spec must be stable and audited before it is considered done
 [Checkpoint Commitment](#Checkpoint-Commitment "Checkpoint Commitment") | Reliable | No | | __FIP__ |
 [Checkpoints data structure](#Checkpoints-data-structure "Checkpoints data structure") | Reliable | No | | __FIP__ |
 [Cross-net messages](#Cross-net-messages "Cross-net messages") | Reliable | No | |__FIP__ |
-[Cross-message pool](#Cross-message-pool "Cross-message pool") | Reliable | No | |__FIP__ |
-[Cross-message execution](#Cross-message-execution "Cross-message execution") | Reliable | No | |__FIP__ |
+[cross-net message pool](#cross-net message-pool "cross-net message pool") | Reliable | No | |__FIP__ |
+[cross-net message execution](#cross-net message-execution "cross-net message execution") | Reliable | No | |__FIP__ |
 [Minting and Burning native tokens](#Minting-and-burning-native-tokens-in-subnets) | Reliable | No | | __FIP__ |
 [Top-down messages](#Top-down-messages "Top-down messages") | Reliable | No | |__FIP__ |
 [Bottom-up messages](#Bottom-up-messages "Bottom-up messages") | Reliable | No | |__FIP__ |
@@ -76,11 +76,12 @@ To mitigate the 1\% attacks pertinent to traditional sharding, subnets in hierar
 
 ### Glossary
 For clarity, we include here a glossary of HC-related concepts used throughout the spec:
-- __Subnet__: Hierarchical consensus sidechain that keeps its own independent state, consensus algorithm, message pool, and broadcast layer, but that is able to seamlessly interact and communicate with other subnets in the hierarchy.
+- __Subnet__: Hierarchical consensus network that keeps its own independent state, consensus algorithm, message pool, and broadcast layer, but that is able to seamlessly interact and communicate with other subnets in the hierarchy.
 - __Rootnet__: First network from which all new subnets are spawned and the hierarchy is built. In our case, the Filecoin mainnet.
 - __Parent Subnet__: Network from which a new subnet (child) is spawned. The parent is the anchor of trust in the hierarchy for all of its children.
-- __Peer/Node of a subnet__: A full-node participating in a specific subnet (i.e. a member of the subnet syncing its full state).
-- __User/Client of a subnet__: Light-node of a subnet (i.e. participant but not necessarily syncing the full state of the subnet).
+- __Peer/Node of a subnet__: A full node participating in a specific subnet (i.e. a member of the subnet syncing its full state).
+- __Validator__: Peer of the subnet with the right to propose new blocks and to participate in the block validation protocol.
+- __User/Client of a subnet__: Light node of a subnet (i.e. participant but not necessarily syncing the full state of the subnet).
 - __Native Token__: Rootnet token, used for the interaction with the HC protocol. In our case, `FIL`.
 - __Circulating Supply__: Number of native tokens transferred into a subnet for use therein.
 - __Cross-net messages__: Messages originated in a subnet and directed to some other subnet in the hierarchy.
@@ -99,7 +100,7 @@ From the perspective of a peer in the network, spawning or syncing with a new su
 > Stack of an HC node
 > ![](https://hackmd.io/_uploads/BJla0JLYq.png)
 
-Subnets are able to interact with the state of other subnets (and that of the rootnet) through _[cross-subnet](#Cross-net-messages "Cross-net messages")_ (or, simply,  _cross-net_) messages. __Full-nodes and validators in a given subnet need trusted access to the state of its parent subnet.__ We implement this by having them synchronise the chain of the parent subnet (i.e. child subnet full-nodes also run full nodes on the parent subnet). 
+Subnets are able to interact with the state of other subnets (and that of the rootnet) through _[cross-subnet](#Cross-net-messages "Cross-net messages")_ (or, simply,  _cross-net_) messages. __Full nodes and validators in a given subnet need trusted access to the state of its parent subnet.__ We implement this by having them synchronise the chain of the parent subnet (i.e. child subnet full nodes also run full nodes on the parent subnet). 
  
 As it may be hard to enforce an honest majority of validators in every subnet, which can result in the subnet chain being compromised or attacked, the system provides a __firewall security property__. This guarantees that, for token exchanges, the impact of a child subnet being compromised is limited, in the worst case, to its circulating supply of the native token, determined by the (positive) balance between cross-net transactions entering the subnet and cross-net transactions leaving the subnet. Addresses in a subnet are funded through cross-net transactions that inject tokens into the subnet. In order for users to be able to spawn a new subnet, they need to deposit __initial collateral__ at the new subnet's parent. This collateral offers a minimum level of trust to new users injecting tokens into the subnet and can be slashed in case of misbehavior by subnet validators.
 
@@ -156,7 +157,9 @@ type SubnetActor interface{
     Leave()
     
     // Kill performs all the sanity-checks required before completely
-    // killing a subnet. It must propagate a `Kill` message to the SCA
+    // killing (e.g. check that all validators have released
+    // their stake, or that there are no user-funds left in the subnet's
+    // state). It must propagate a `Kill` message to the SCA
     // to unregister the subnet from the hierarchy, making it no longer
     // discoverable.
     // (methodNum = 4)
@@ -182,7 +185,7 @@ type SubnetActor interface{
     CheckEquivocation(invalid []Block, valid []Block)
 }
 ```
-##### SubnetActor State
+##### SubnetActor state
 > Example of state of the subnet actor from the reference implementation.
 ```go
 type SubnetState struct {
@@ -195,10 +198,8 @@ type SubnetState struct {
     // Minimum stake required for an address to join the subnet
     // as a miner
     MinMinerStake abi.TokenAmount
-    // List of miners in the subnet.
-    // NOTE: Consider using AMT.
-    Miners []address.Address
     // Total collateral currently deposited in the
+    // SCA from the subnet
     TotalStake abi.TokenAmount
     // BalanceTable with the distribution of stake by address
     Stake cid.Cid // HAMT[address]tokenAmount
@@ -213,9 +214,10 @@ type SubnetState struct {
     Checkpoints cid.Cid // HAMT[epoch]Checkpoint
     // Validator votes for the checkpoint of the current window.
     CheckpointVotes cid.Cid // HAMT[cid]CheckVotes
-    // ValidatorSet is a set of validators
+    // List of validators in the subnet
     ValidatorSet []hierarchical.Validator
-    // MinValidators is the minimal number of validators required to join before starting the subnet
+    // Minimal number of validators required for the subnet
+    // to be able to validate new blocks.
     MinValidators uint64
 }
 ```
@@ -275,7 +277,7 @@ type SCA interface{
     AddCollateral()
     
     // ReleaseCollateral expects as source the address of the subnet actor
-    // for which the collateral should be released. It triggers a message
+    // for which the collateral should be released. It triggers a transfer message
     // to the subnet actor returning the corresponding collateral. 
     // (methodNum = 4)
     ReleaseCollateral(value abi.TokenAmount)
@@ -305,7 +307,7 @@ type SCA interface{
     Release()
     
     // SendCross can be called by any user in the subnet to send 
-    // an arbitrary cross-message to any other subnet in
+    // an arbitrary cross-net message to any other subnet in
     // the hierarchy.
     // (methodNum = 9)
     SendCross(msg CrossMsgParams)
@@ -313,6 +315,12 @@ type SCA interface{
     // ApplyMessage can only be called as an `ImplicitMessage` by
     // the `SystemActor` and is used to perform the execution of a 
     // of cross-net messages in the subnet. 
+    // 
+    // This method is called when a cross-net message is found in a
+    // validated block and needs to be executed.
+    // - It determines the type of cross-net message
+    // - It executes the message and trigger the corresponding state changes.
+    // - And it updates the latest nonce applied for the type of message. 
     // (methodNum = 10)
     ApplyMessage(msg CrossMsgParams)
     
@@ -328,13 +336,29 @@ type SCA interface{
     // (methodNum = 12)
     SubmitAtomicExec(submit SubmitExecParams)
     
-    // WIP: Not implemented yet.
+    // ReportMisbehavior is used to report a misbehavior from one
+    // of the child subnets of the current network. This function
+    // can send additional messages to the
+    // `CheckEquivocation` method of the correponding subnet actor
+    // to perform checks over the proof of misbehavior.
+    // If the proof succeeds, the collateral for the subnet is slashed.
     // (methodNum = 13)
-    ReportMisbehavior()
+    ReportMisbehavior(SubnetID, invalid []Block, valid []Block)
     
-    // WIP: Not implemented yet.
+    // Save can be used by any user of the subnet to trigger the persistence
+    // of the state of the subnet in any storage system (IPFS, Filecion, etc.).
+    // This method returns the CID and URI to retrieve the snapshot. It also keeps
+    // in the SCA state a map of all the available snapshot and the latest epoch they
+    // persist.
+    // 
+    // NOTE1: This method is WIP and the interface may suffer changes in
+    // the future. Once FVM has native support for starting deals on-chain,
+    // the actor should be able to handle the full end-to-end storage of the
+    // snapshot.
+    // NOTE2: We are considering the implementation of a protocol that performs
+    // the storage of incremental snapshots.
     // (methodNum = 14)
-    Save()
+    Save() (Cid, URI)
 ```
 
 > All function parameters from the above snippet of code are fully specified in the detailed description of the different protocols.
@@ -364,7 +388,7 @@ type SCAState struct {
     // Nonce of bottom-up messages for msgMeta received from checkpoints.
     // This nonce is used to mark with a nonce the metadata about cross-net
     // messages received in checkpoints. This is used to order the
-    // bottom-up cross-messages received through checkpoints.
+    // bottom-up cross-net messages received through checkpoints.
     BottomUpNonce     uint64
     // Queue of bottom-up cross-net messages to be applied.
     BottomUpMsgsMeta  cid.Cid // AMT[schema.CrossMsgs]
@@ -419,8 +443,6 @@ type Consensus interface {
     // Used by mining processes to assemble and propose a new
     // signed block.
     CreateBlock(ctx context.Context, w api.Wallet, bt *api.BlockTemplate) (*types.FullBlock, error)
-    // Return the type of consensus. 
-    Type() hierarchical.ConsensusType
 }
 ```
 An example of a BFT-like consensus protocol being integrated in HC through this consensus interface can be found [here](https://github.com/filecoin-project/mir)
@@ -431,22 +453,17 @@ An example of a BFT-like consensus protocol being integrated in HC through this 
 The following section presents an overview of the lifecycle of a subnet.
 
 ### Spawning and joining a subnet
-Creating a new subnet instantiates a new independent state with all its subnet-specific requirements to operate independently. This includes, in particular: a new pubsub topic that peers use as the transport layer to exchange subnet-specific messages, a new mempool instance, a new instance of the Virtual Machine (VM), as well as any other additional module required by the consensus that the subnet is running (builtin-actors, mining resources, etc.). 
+Creating a new subnet instantiates a new independent state with all its subnet-specific requirements to operate independently. This includes, in particular: a new pubsub topic that peers use as the transport layer to exchange subnet-specific messages, a new mempool instance, a new instance of the Virtual Machine (VM), as well as any other additional module required by the consensus that the subnet is running (built-in actors, mining resources, etc.). 
 
 To spawn a new subnet, peers need to deploy a new `SubnetActor` that implements the core logic for the governance of the new subnet. The contract specifies the consensus protocol to be run by the subnet and the set of policies to be enforced for new members, leaving members, checkpointing, killing the subnet, etc. For a new subnet to interact with the rest of the hierarchy, it needs to be registered in the `SCA` of the parent chain. The `SCA` is a system actor that exposes the interface for subnets to interact with the hierarchical consensus protocol. This smart contract includes all the available functionalities related to subnets and their management. And, as `SA`s are user-defined and untrusted, it also enforces security requirements, fund management and the cryptoeconomics of hierarchical consensus.
 
-Subnets are identified with a unique ID that is inferred deterministically from the ID of its parent and from the ID of the `SA` that governs the subnet's operation. This deterministic naming enables the discovery of --- and interaction with --- subnets from any other point in the hierarchy without the need for a discovery service: peers only need to send a message to the subnet's specific pubsub topic, identified with the subnet's ID.
+For a subnet to be registered in the `SCA`, the actor needs to send a new message to the `Register()` function of the `SCA`. This transaction includes the amount of tokens the subnet wants to add as collateral in the parent chain to secure the child chain. The `SA` may implement custom policies that needs to be fulfilled before registering the subnet and triggering `Register()` message to the `SCA`, like for instance waiting for a minimum number of validators to join the network and put some collateral. The `SA` will also need to require that enough collateral is staked before registering to ensure that the message succeeds. For a subnet to be activated in HC, at least `CollateralThreshold` needs to be staked in the `SCA` to be in an `Active` state.
 
-For a subnet to be registered in the `SCA`, the actor needs to send a new message to the `Register()` function of the `SCA`. This transaction includes the amount of tokens the subnet wants to add as collateral in the parent chain to secure the child chain. The `SA` may implement custom policies that needs to be fulfilled before registering the subnet and triggering `Register()` message to the `SCA`, like for instance waiting for a minimum number of validators to join the network and put some collateral. The `SA` will also need to require that enough collateral is staked before registering to ensure that the message succeeds. For a subnet to be activated in HC, at least `CollateralThreshold` needs to be staked in the `SCA`.
+This collateral is frozen through the lifetime of the subnet and does not become part of its circulating supply. These funds are slashed when a valid complaint in the subnet is reported to the parent, or when a validator of the subnet leaves and release its collateral. If the subnet's collateral drops below `CollateralThreshold`, the subnet enters an `Inactive` state, and it can no longer interact with the rest of the hierarchy. To recover its `Active` state, users of the subnet need to put up additional collateral.
 
 ### Leaving and killing a subnet
-Members of a subnet can leave the subnet at any point by sending a message to the subnet's `SA` in the parent chain. If the miner fulfils the requirements to leave the subnet defined in the subnet's `SA` when it was deployed, a message to the `SCA` is triggered by the `SA` to release the miner's collateral.  If a validator leaving the subnet brings the collateral of the subnet below `CollateralThreshold`, the subnet gets in an `Inactive` state, and it can no longer interact with the rest of the chains in the hierarchy or checkpoint to the top chain. To recover its `Active` state, any participant in the protocol (within or outside the subnet, user or validator) needs to put up additional collateral.
+Members of a subnet can leave the subnet at any point by sending a message to the subnet's `SA` in the parent chain. If the miner fulfils the requirements to leave the subnet defined in the subnet's `SA` when it was deployed, a message to the `SCA` is triggered by the `SA` to release the miner's collateral.  If a validator leaving the subnet brings the collateral of the subnet below `CollateralThreshold`, the subnet gets in an `Inactive` state, and it can no longer interact with the rest of the chains in the hierarchy or checkpoint to the top chain. To recover its `Active` state, any participant in the protocol (within or outside the subnet, user or validator) needs to put up additional collateral. An `Inactive` subnet can be killed by calling the `Kill()` method of the subnet actor that propagates the `Kill()` signal (if all the checks pass) to the SCA.
 
-Validators of a subnet can also kill a subnet by sending a `ReleaseCollateral()` message to the `SA`. Similar to the previous situation, the `SA` sends a message to the `SCA` to release all the collateral for the subnet if all the requirements to kill the subnet are fulfilled.
-
-Subnet validators need to have locked at least `CollateralThreshold` in their parent's `SCA` to register the subnet to the hierarchy and be able to interact with other subnets. This collateral is frozen through the lifetime of the subnet and does not become part of its circulating supply. These funds are slashed when a valid complaint in the subnet is reported to the parent. If the subnet's collateral drops below `CollateralThreshold`, the subnet enters an `Inactive` state, and it can no longer interact with the rest of the hierarchy. To recover its `Active` state, users of the subnet need to put up additional collateral.
-
-### Handling the state of killed subnets
 Validators in a subnet may choose to implicitly kill it by stopping the validation of blocks. The subnet may still be holding user funds or useful state. If miners leave the subnet and take the collateral below the `CollateralThreshold`, users no longer have a way to get their funds and state out of the subnet. To prevent this from happening, the `SCA` includes a `Save()` function that allows any participant in the subnet to persist the state. Users may choose to perform this snapshot with the latest state right before the subnet is killed, or perform periodic snapshots to keep track of the evolution of the state. Through this persisted state and the checkpoints committed by the subnet, users are able to provide proof of pending funds held in the subnet or of a specific part of the state that they want to be migrated back to the parent. `Save()` is also used to enforce the [Data availability](#Data-availability "Data availability") of a subnet's state.
 
 ## Naming
@@ -470,7 +487,7 @@ type SubnetID struct {
     Parent string 
     // Address of the subnet actor governing the operation
     // of the subnet in the parent.
-    // (it must be an ID address)
+    // (it must be an ID --i.e f00-- address)
     Actor address.Address
 }
 ```
@@ -492,21 +509,21 @@ Bytes() []byte
 FromString(string) (SubnetID, error)
 // Returns the common parent of the current subnet and the one
 // given as an argument.
-CommonParent(SubnetID) SubnetID
+CommonParent(other SubnetID) SubnetID
 // Returns the next subnet down in the hierarchy in the path of the 
 // receiving SubnetID, starting from the prefix given as an argument. 
 // It errors if there is no such path leading down.
 // 
 // Example: 
 // `/root/f0100/f0200`.Down(`/root`) = `/root/f0100`
-Down(SubnetID) (SubnetID, error)
+Down(other SubnetID) (SubnetID, error)
 // Returns the next subnet up in the hierarchy in the path of the 
 // receiving SubnetID, starting from the prefix given as an argument. 
 // It errors if there is no such path leading up.
 // 
 // Example: 
 // `/root/f0100/f0200`.Up(`/root/f0100`) = `/root`
-Up(SubnetID) (SubnetID, error)
+Up(other SubnetID) (SubnetID, error)
 ```
 
 ## Hierarchical Address
@@ -542,28 +559,28 @@ Checkpoints are used to anchor a subnet's security to that of its parent network
 
 Checkpoints need to be signed by miners of a child chain and committed to the parent chain through their corresponding `SA`. The specific signature policy is defined in the `SA` and determines the type and minimum number of signatures required for a checkpoint to be accepted and validated by the `SA` for its propagation to the top chain. Different signature schemes may be used here, including multi-signatures or threshold signatures among subnet miners. For instance, in the reference implementation of `SA`, the actor waits for more than `2/3` of the validators in the subnet to send the valid checkpoint signed before propagating it to the `SCA` for commitment. Alternative verification policies for a subnet can be implemented in the `SubmitCheckpoint()` function of the subnet actor interface. 
 
-In order for a new checkpoint to be accepted for commitment in `SCA`, the source of the message `CommitChildCheckpoint()` needs to be the address of the subnet actor of the corresponding subnet; the subnet needs to be in an `Active` state (i.e. its collateral is over `CollateralThreshold`); the epoch of the checkpoint should be a multiple of `CheckPeriod` and larger that that of the previous checkpoint; and the checkpoint must point to the `CID` of the previous checkpoint committed by the subnet. 
+In order for a new checkpoint to be accepted for commitment in `SCA`, the source of the message `CommitChildCheckpoint()` needs to be the address of the subnet actor of the corresponding subnet; the subnet needs to be in an `Active` state (i.e. its collateral is over `CollateralThreshold`); the epoch of the checkpoint should be a multiple of the subnet's `CheckPeriod` and larger that that of the previous checkpoint; and the checkpoint must point to the `CID` of the previous checkpoint committed by the subnet. 
 
 When spawned, subnets are allowed to configure the `CheckPeriod` that better suits their needs and the specifics of their consensus algorithm.
 
-### Checkpoint Commitment
+### Checkpoint commitment
 As an example, lets consider a checkpoint for subnet `/root/f0100/f0200`. Every `CheckPeriod` (in terms of subnet block time), validators access the checkpoint template that needs to be signed and populated by calling the `CheckpointTemplate()` state accessor from `SCA` in `/root/f0100/f0200`. Once signed and populated, checkpoints from `/root/f0100/f0200` are submitted to the `SA` with ID `f0200` of subnet `/root/f0100` by sending a message to `SubmitCheckpoint()`. After performing the corresponding checks and waiting for the commitment conditions (i.e. `2/3` of the validators sending a signed checkpoint in its reference implementation), this actor then triggers a message to `/root/f0100` `SCA`'s `CommitChildCheckpoint()` function to commit the checkpoint.
 
 When the checkpoint is committed, the `SCA` in `/root/f0100` is responsible for aggregating the checkpoint from `/root/f0100/f0200` with those of other children of `/root/f0100`, and for generating a new checkpoint for `/root/f0100`, which is then propagated to its parent chain, `/root`. The commitment of checkpoints also triggers the execution and propagation of cross-net messages. As checkpoints flow up the chain, the `SCA` of each chain picks up these checkpoints and inspects them to propagate potential state changes triggered by messages included in the cross-net messages that have the `SCA`'s subnet as a destination subnet (see [Cross-net messages](#Cross-net-messages "Cross-net messages")).
 
 Every checkpoint for a subnet points to the previous checkpoint being committed to ensure their integrity.
 
-> Checkpoint template state accessor in SCA
+> Checkpoint template read-only function in SCA
 ```go
 // Returns the checkpoint template to be populated for the current
 // checkpoint window. The current checkpoint window is computed by 
 // (currEpoch / CheckPeriod) * CheckPeriod. This determines the checkpoint
 // that needs to be populated and signed for the current window.
-CheckpointTemplate()
+CheckpointTemplate() Checkpoint
 ```
 
 As shown on the next figure, the checkpointing protocol has two distinct stages:
-- __Checkpoint Window__: In this window, the `SCA` opens a checkpoint template and starts populating it with cross-messages arriving to the subnet (and that need to be propagated further inside the checkpoint) and with the aggregated checkpoints committed from the current subnet's children. The checkpoint window for the checkpoint in epoch `n` starts at `n-CheckPeriod` and ends at epoch `n`.
+- __Checkpoint Window__: In this window, the `SCA` opens a checkpoint template and starts populating it with cross-net messages arriving to the subnet (and that need to be propagated further inside the checkpoint) and with the aggregated checkpoints committed from the current subnet's children. The checkpoint window for the checkpoint in epoch `n` starts at `n-CheckPeriod` and ends at epoch `n`.
 - __Signing Window__: The signing window is the time range reserved for validators of the subnet to populate the checkpoint template with the corresponding proof of the state of the checkpoint, to sign the checkpoint, and to submit it to the corresponding `SA` in the parent for committment. The signing window for the checkpoint in epoch `n` goes from `n` to `n+CheckPeriod`. Consequently, the signing window for the checkpoint of epoch `n-CheckPeriod` and the checkpoint window for the checkpoint of epoch `n` is run in parallel. The checkpoint template provided by the `SCA` has `CrossMsgs`, `PrevCheck`, and `Epoch` already populated, and validators only have to add the corresponding `Proof` and sign it.
 
 
@@ -585,33 +602,38 @@ type Checkpoint struct {
 
 // Data included in checkpoints
 type CheckpointData struct {
-    // Source subnet of the checkpoint.
+    // The SubnetID of the subnet that is committing the checkpoint. 
+    // The `SCA` checks that the right subnet actor is committing 
+    //the checkpoint for the source to prevent forged checkpoints. 
     Source     address.SubnetID
-    // Proof of the state of the subnet. In the
-    // reference implementation this is the tipset
-    // for the epoch in the checkpoint, but this could
-    // be a ZKProof or any other proof chosen by the subnet.
+    // The proof of the state of the subnet that is to be 
+    // committed in the parent chain. In the reference 
+    // implementation of the subnet actor, we just include the 
+    // tipset for the epoch being committed, but this proof could 
+    // be a snapshot of a test, a ZK Proof, or any other piece of 
+    // information that subnets want to anchor in their parent's chain.
     Proof     []byte
-    // Epoch of the checkpoint. Determined by the
-    // subnet's CheckPeriod
+    // Epoch of the checkpoint being committed. 
+    // The epoch must be a multiple of `CheckPeriod`.
     Epoch     abi.ChainEpoch
     // Cid of the previous checkpoint committed for the subnet.
     PrevCheck cid.Cid
     // Array with the aggregation of all the checkpoints committed
     // from the subnet's children.
     Children  []ChildCheck
-    // Array with cross-message metadata of messages being propagated
-    // in the current checkpoint.
+    // Metadata of all the messages being propagated in the checkpoint. 
+    // This metadata includes the source, destination 
+    // and `CID` of the messages.  
     CrossMsgs []CrossMsgMeta
 }
 
 // Metadata pointing to the list of messages being
 // propagated in the checkpoint.
 type CrossMsgMeta struct {
-    // Source of the cross-messages included in
-    // this metadata packagle
+    // Source of the cross-net messages included in
+    // this metadata package
     From    address.SubnetID
-    // Destination of the cross-messages included.
+    // Destination of the cross-net messages included.
     To      address.SubnetID
     // CID of the aggregation of all the messages being
     // propagated. This CID is used to uniquely identify
@@ -627,7 +649,7 @@ type CrossMsgMeta struct {
 
 // Package with all checkpoints committed in
 // the checkpoint window from children.
-type ChildChecks struct {
+type ChildCheck struct {
     // Source of the checkpoints. ID of the child.
     Source address.SubnetID
     // List of cid of the checkpoints committed by
@@ -636,35 +658,29 @@ type ChildChecks struct {
 }
 
 ```
-Checkpoints include in their payload the following data:
-- __`Source`__: The SubnetID of the subnet that is committing the checkpoint. The `SCA` checks that the right subnet actor is committing the checkpoint for the source to prevent forged checkpoints. 
-- __`Proof`__: The proof of the state of the subnet that is to be committed in the parent chain. In the reference implementation of the subnet actor, we just include the tipset for the epoch being committed, but this proof could be a snapshot of a test, a ZK Proof, or any other piece of information that subnets want to anchor in their parent's chain.
-- __`Epoch`__: Epoch of the checkpoint being committed. The epoch must be a multiple of `CheckPeriod`.
-- __`PrevCheck`__: `CID` of the previous checkpoint committed.
-- __`Children`__: Slice of checkpoints from children propagated in the corresponding checkpointing window.
-- __`CrossMsgs`__: Metadata of all the messages being propagated in the checkpoint. This metadata includes the source, destination and `CID` of the messages. Every `CrossMsgMeta` gets updated with every new checkpoint on its way up the hierarchy aggregating messages with the same destination building a tree of linked message digests with different sources but the same destination. Thus, every subnet only sees the message aggregation of its children (i.e. the digest of all the subnet's children's CrossMsgMeta list). Any subnet looking to know the specific messages behind the `CID` of a `CrossMsgMeta` -- which will be the case for the destination subnet of the messages, see [cross-net messages](#cross-net-messages) -- only needs to send a query message leveraging the [Subnet Content Resolution Protocol](#Subnet-Content-Resolution-Protocol "Subnet Content Resolution Protocol") for the cross-message `CID` to the corresponding pubsub topic of the source subnet. 
+Every `CrossMsgMeta` gets updated with every new checkpoint on its way up the hierarchy aggregating messages with the same destination building a tree of linked message digests with different sources but the same destination. Thus, every subnet only sees the message aggregation of its children (i.e. the digest of all the subnet's children's CrossMsgMeta list). Any subnet looking to know the specific messages behind the `CID` of a `CrossMsgMeta` -- which will be the case for the destination subnet of the messages, see [cross-net messages](#cross-net-messages) -- only needs to send a query message leveraging the [Subnet Content Resolution Protocol](#Subnet-Content-Resolution-Protocol "Subnet Content Resolution Protocol") for the cross-net message `CID` to the corresponding pubsub topic of the source subnet.
 
 > TODO: Add a figure of how `CrossMsgMeta` are aggregated?
 
 ## Cross-net messages
 Users in a subnet interact with other subnets through cross-net transactions (or messages). The propagation of a cross-net transaction may slightly differ depending on the location of subnets in the hierarchy (i.e. if moving up or down the hierarchy). In particular, we distinguish the following type of cross-net messages: 
 
-- __Top-down messages__ _(brown)_ are cross-messages directed towards a subnet that is lower in the hierarchy (e.g. from `/root/f0100` to `/root/f0200`).
-- __Bottom-up  messages__ _(green)_ are cross-messages directed towards a subnet that is higher in the hierarchy but shares the same prefix (e.g  from  `/root/f0100/f0200` to `root/f0100`).
+- __Top-down messages__ _(brown)_ are cross-net messages directed towards a subnet that is lower in the hierarchy (e.g. from `/root/f0100` to `/root/f0200`).
+- __Bottom-up  messages__ _(green)_ are cross-net messages directed towards a subnet that is higher in the hierarchy but shares the same prefix (e.g  from  `/root/f0100/f0200` to `root/f0100`).
 - __Path messages__ _(pink)_. Every message routed in the hierarchy can be seen as a combination of top-down and bottom-up transactions. Path messages are cross-net messages in which the source and destination subnets are not in the same branch. These are propagated through bottom-up messages (i.e. `CrossMsgMeta` in checkpoints) up to the common parent (`/root`, in the worst case) and through top-down messages from there to the destination.
 
 ![](https://hackmd.io/_uploads/r1af_cd99.png)
 
 New cross-net messages from a subnet are sent by sending a message to the `SendCross()`, `Fund()`, or `Release()` functions of the `SCA` of the corresponding subnet. `SendCross()` sends an arbitrary message specified as an argument to the subnet in `Destination`; while `Fund()` initiates a top-down message to a child subnet with an amount of native tokens to the source's address in the subnet; and `Release()` sends and amount of native tokens to the source's address in the parent. When any of these messages is received, the `SCA` evaluates if it is a top-down or a bottom-up message, and routes it correspondingly (by notifying the children or including the message in a checkpoint, respectively).
 
-### Cross-message pool
+### Cross-net message pool
 Nodes in subnets have two types of message pools: an internal pool to track unverified messages originating in and targeting the current subnet, and a `CrossMsgPool` that listens to unverified cross-msgs directed at (or traversing) the subnet. In order for cross-msgs to be verified and executed, they need to be run through the consensus algorithm of the subnet and included in a valid subnet block.
 
 Full nodes in subnets are required to be full nodes of their parent in order to listen to events in their parent's `SCA` and their own subnet actor. The `CrossMsgPool` listents to the `SCA` and collects any new cross-net messages appearing at the `SCA`. Whenever the subnet's parent`SCA` receives a new top-down message or collects a new bottom-up `CrossMsgMeta` from a child checkpoint, the `CrossMsgPool` is conveniently notified. Top-down messages can be proposed to and applied directly in the subnet. For bottom-up messages, the cross-msg pool only has the CID of the `CrossMsgMeta` that points to the cross-msgs to be applied and, therefore, needs to make a request to the [Subnet Content Resolution Protocol](#Subnet-Content-Resolution-Protocol "Subnet Content Resolution Protocol") to retrieve the raw messages, so they can be proposed and applied in the subnet.
 
 Blocks in subnets include both messages originating within the subnet and cross-msgs targeting (or traversing) the subnet. Both types can be differentiated by looking at the `From` and `To` of the messages: cross-net messages include a `hierarchical address` (with subnet information) in both fields, while plain subnet messages include raw addresses in these fields. When a new block including top-down cross-msgs is verified in the subnet consensus, the cross-msgs are committed, and every node receiving the new block executes the cross-msgs to trigger the corresponding state changes and fund exchanges in the subnet.
 
-### Cross-message execution
+### Cross-net message execution
 Cross-msgs in a block are implicitly executed by calling the `ApplyMsg()` of the subnet's `SCA` from the `SystemActor`. In the execution of a new block, the `TipSetExecutor` checks if the message to be applied is a plain subnet message or a cross-net message. If it is a cross-net message, the `TipSetExecutor` tailors a new message to the `SCA`, calling `ApplyMsg()` and including the cross-net message to be executed as a parameter. This new message is applied implicitly in the node with `ApplyImplicitMsg()` (see [how messages to the `CronActor` and rewards are executed](https://spec.filecoin.io/#section-systems.filecoin_vm.interpreter.implicit-messages) in the Filecoin spec).
 
 What `ApplyMsg()` does to execute the cross-net message is:
@@ -684,7 +700,7 @@ When a new top-down cross-net message is sent to the `SCA` by calling `Fund()`, 
 - Stores the message to notify its propagation in the `TopDownMsgs` of the corresponding child subnet.
 - Locks in the `SCA` the number of native tokens included in the `value` of the message, increasing by the same amount the `CircSupply` of the subnet. These funds will be frozen until a bottom-up transaction releases them back to the parent. In this way, the `SCA` keeps track of the circulating supply of child subnets and is responsible for enforcing the firewall requirement in subnets (whenever native tokens want to be released from it, see [bottom-up messages](#bottom-up-messages)).
 
-When a new cross-message to a subnet is included in its `TopDownMsgs`, the validators of the subnet are notified through their `CrossMsgPool` about this new top-down message. The `CrossMsgPool` waits for a `finalityThreshold` before proposing the message to be sure that the top-down message commitment can be considered final (this threshold may change according to the requirements of the subnet, and the specific consensus algorithm used by the parent. The threshold for BFT-like consensus may be `1` or close to `1`, while sync consensus algorithms like PoW may require larger values). After the `finalityThreshold`, validators in the subnet will check the latest `AppliedTopDownNonce` to fetch all unverified cross-net messages up to the latest one included in `TopDownMsgs`, and propose them for their inclusion in a block and subsequent execution.
+When a new cross-net message to a subnet is included in its `TopDownMsgs`, the validators of the subnet are notified through their `CrossMsgPool` about this new top-down message. The `CrossMsgPool` waits for a `finalityThreshold` before proposing the message to be sure that the top-down message commitment can be considered final (this threshold may change according to the requirements of the subnet, and the specific consensus algorithm used by the parent. The threshold for BFT-like consensus may be `1` or close to `1`, while sync consensus algorithms like PoW may require larger values). After the `finalityThreshold`, validators in the subnet will check the latest `AppliedTopDownNonce` to fetch all unverified cross-net messages up to the latest one included in `TopDownMsgs`, and propose them for their inclusion in a block and subsequent execution.
 
 ![](https://hackmd.io/_uploads/rynGK2ut5.png)
 
@@ -692,7 +708,7 @@ When a new cross-message to a subnet is included in its `TopDownMsgs`, the valid
 ### Bottom-up messages
 
 #### Including messages in `CrossMsgMeta`
-Bottom-up messages are created by sending a message to the `Release()` or `SendCross()` methods of the source subnet's `SCA`. `Release()` sends a cross-message to the parent of the subnet releasing some funds from the subnet, while `SendCross()` sends an arbitrary message and is routed as a bottom-up message when it includes in its `CrossMsgsParams` a destination subnet in the upper layers of the hierarchy or with a common parent higher in the hierarchy. Bottom-up messages are propagated inside checkpoints. At every checkpoint period, the `SCA` collects and aggregates all `CrossMsgMeta` from bottom-up transactions originated in the subnet, as well as all the `CrossMsgMeta`. All these `CrossMsgMeta`are included in the next checkpoint for their propagation up the hierarchy.
+Bottom-up messages are created by sending a message to the `Release()` or `SendCross()` methods of the source subnet's `SCA`. `Release()` sends a cross-net message to the parent of the subnet releasing some funds from the subnet, while `SendCross()` sends an arbitrary message and is routed as a bottom-up message when it includes in its `CrossMsgsParams` a destination subnet in the upper layers of the hierarchy or with a common parent higher in the hierarchy. Bottom-up messages are propagated inside checkpoints. At every checkpoint period, the `SCA` collects and aggregates all `CrossMsgMeta` from bottom-up transactions originated in the subnet, as well as all the `CrossMsgMeta`. All these `CrossMsgMeta`are included in the next checkpoint for their propagation up the hierarchy.
 
 Whenever a new bottom-up message is triggered in a subnet, its `SCA`:
 - Burns the amount of native tokens included in the `value` of the message in the subnet.
@@ -700,7 +716,7 @@ Whenever a new bottom-up message is triggered in a subnet, its `SCA`:
     - If the `CrossMsgMeta` doesn't exist in the checkpoint, the SCA creates a new `CrossMsgs` appending the cross-net message in the `CrossMsgsRegistry` of the SCA, and includes in the checkpoint a new `CrossMsgMeta` for the destination including the `CID` of the `CrossMsgs` stored in the registry.
     - If the `CrossMsgMeta` for the destination exists in the checkpoint, the SCA gets from the `CrossMsgsRegistry` the current `CID` included in the `CrossMsgMeta`, and it appends the newly created cross-net message to `Msgs`. `SCA` then updates with the new `CID` (after appending the message) to the `CrossMsgMeta` for the checkpoint, deletes the outdated `CrossMsgs` from the registry, and includes the updated one.
     - In these updates, also the total amount of native tokens included in the messages of the `CrossMsgMeta` is updated in the `Value` field.
-- Finally, when the signing window for the checkpoint closes, the checkpoint is propagated including a link to the cross-message in the `CrossMsgMeta` of the checkpoint. 
+- Finally, when the signing window for the checkpoint closes, the checkpoint is propagated including a link to the cross-net message in the `CrossMsgMeta` of the checkpoint. 
 
 > Bottom-up messages and checkpoint propagation data structures
 ```go
@@ -708,10 +724,10 @@ Whenever a new bottom-up message is triggered in a subnet, its `SCA`:
 // Metadata pointing to the list of messages being
 // propagated in the checkpoint.
 type CrossMsgMeta struct {
-    // Source of the cross-messages included in
+    // Source of the cross-net messages included in
     // this metadata package
     From    address.SubnetID
-    // Destination of the cross-messages included.
+    // Destination of the cross-net messages included.
     To      address.SubnetID
     // CID of the aggregation of all the messages being
     // propagated. This CID is used to uniquely identify
@@ -748,22 +764,22 @@ When a new checkpoint for a child subnet is committed in a network, the `SCA` ch
 - Checks if the `Value` included in the `CrossMsgMeta` for the source subnet is below the total `CircSupply` of native tokens for the subnet. If the `Value > CircSupply`, `SCA` rejects the cross-msgs included in the `CrossMsgMeta` due to a violation of the firewall requirement. If `Value <= CircSupply` then the `CrossMsgMeta` is accepted, and `CircSupply` is decremented by `Value`.
 - Checks if the destination of the `CrossMsgMeta` is the current subnet; a subnet higher up in the hierarchy; or a subnet that is lower in the hierarchy.
     - If the `CrossMsgMeta` points to the current subnet or to some other subnet down the current branch of the hierarchy in its `To`, the `CrossMsgMeta` is stored with the subsequent `BottomUpNonce` in `BottomUpMsgsMeta` to notify the `CrossMsgPool` that the cross-msgs inside the `CrossMsgMeta` need to be conveniently executed (or routed down).
-    - If the `CrossMsgsMeta` points to a subnet that needs to be routed up, `SCA` executes the same logic as when a new bottom-up cross-msg is created in the subnet, but appending the `CrossMsgsMeta` into the `Meta` field of `CrossMsgs`. The corresponding `CrossMsgsMeta` of the current checkpoint is created or updated to include this meta for it to be propagated further up in the next checkpoint. Thus, the `CID` of the new `CrossMsgMeta` for the parent includes a single `CID` that already aggregates a link to the `CrossMsgMeta` of the child with cross-messages that need to go even upper in the hierarchy.
+    - If the `CrossMsgsMeta` points to a subnet that needs to be routed up, `SCA` executes the same logic as when a new bottom-up cross-msg is created in the subnet, but appending the `CrossMsgsMeta` into the `Meta` field of `CrossMsgs`. The corresponding `CrossMsgsMeta` of the current checkpoint is created or updated to include this meta for it to be propagated further up in the next checkpoint. Thus, the `CID` of the new `CrossMsgMeta` for the parent includes a single `CID` that already aggregates a link to the `CrossMsgMeta` of the child with cross-net messages that need to go even upper in the hierarchy.
 
 Validators' `CrossMsgPool`s also listen for new `BottomUpMsgsMeta` being included in their subnet SCA. When a new `CrossMsgsMeta` appears in `BottomUpMsgsMeta` (after the committment of a checkpoint), the `CrossMsgPool` checks if `CrossMsgsMeta.Nonce > AppliedBottomUpNonce` to see if it includes cross-msgs that haven't been executed yet. If this is the case, the `CrossMsgPool`:
 - Gets all `CrossMsgsMeta` in `BottomUpMsgsMeta` with `Nonce > AppliedBottomUpNonce`.
 - Gets `CrossMsgMeta.Cid` and makes a request to the subnet content resolution protocol to resolve the `CrossMsgs` behind that `CrossMsgMeta`. These requests are directed to the subnet in `Source` and they resolve the CID from the subnet's `CrossMsgsRegistry`. 
     - If the resolved `CrossMsgs` only includes elements in the `Msgs` field, they can be directly proposed in the next block for their execution.
     - If this is not the case, and `CrossMsgs` includes in its `Meta` field `CrossMsgMetas` from its children, then these `CrossMsgsMeta` need to be resolved recursively until all the `CrossMsgsMeta` have been successfully resolved to their underlying messages.
-- Then, as it happened for top-down messages, when the `CrossMsgPool` has all the bottom-up messages to be applied, it waits for a `FinailityThreshold` before proposing the messages to be sure that the checkpoint commitment can be considered final, and all the resolved cross-messages are proposed for their inclusion and subsequent execution. 
+- Then, as it happened for top-down messages, when the `CrossMsgPool` has all the bottom-up messages to be applied, it waits for a `FinailityThreshold` before proposing the messages to be sure that the checkpoint commitment can be considered final, and all the resolved cross-net messages are proposed for their inclusion and subsequent execution. 
 
 ![](https://hackmd.io/_uploads/Bkrzj2uF5.png)
 
 ### Path messages
-Path messages are propagated and executed as a combination of bottom-up and top-down messages according the path they need to traverse in the hierarchy. Let's consider a message from `/root/f0100/f0200` to `/root/f0100/f0300`. This message is propagated as a set of bottom-up message up to the closest common parent (`/root/f0100` in our example). When the checkpoint including the cross-message from `/root/f0100/f0200` arrives to `/root/f0100`, the `CrossMsgMeta` is resolved, and from there on, the message is propagated as a top-down message from the closest common parent to the destination (in this case, from `/root/f0100` to `/root/f0100/f0300`),
+Path messages are propagated and executed as a combination of bottom-up and top-down messages according the path they need to traverse in the hierarchy. Let's consider a message from `/root/f0100/f0200` to `/root/f0100/f0300`. This message is propagated as a set of bottom-up message up to the closest common parent (`/root/f0100` in our example). When the checkpoint including the cross-net message from `/root/f0100/f0200` arrives to `/root/f0100`, the `CrossMsgMeta` is resolved, and from there on, the message is propagated as a top-down message from the closest common parent to the destination (in this case, from `/root/f0100` to `/root/f0100/f0300`),
 
 #### Errors propagating cross-net messages
-If at any point the propagation or execution of a cross-msg fails (either because the message runs out of gas in-transit; because the message is invalid in the destination subnet; or because the `CrossMsgMeta.Cid` can't be resolved successfully), the message is discarded, and an error is tracked for the cross-message.
+If at any point the propagation or execution of a cross-msg fails (either because the message runs out of gas in-transit; because the message is invalid in the destination subnet; or because the `CrossMsgMeta.Cid` can't be resolved successfully), the message is discarded, and an error is tracked for the cross-net message.
 
 > TODO: Come up with error codes for message failures and how to propagate them to the source. Only the source will be notified.
 
@@ -778,7 +794,7 @@ On the other hand, bottom-up messages release funds from a subnet (reducing its 
 
     
 ## Subnet Content Resolution Protocol
-For scalability reasons, when the destination subnet receives a new checkpoint with cross-messages to be executed, it is only provided with the `CID` of the aggregated messages inside the `CrossMsgMeta`. For the subnet to be able to trigger the corresponding state changes for all the messages, it needs to fetch the payload of messages behind that `CID`, as illustrated in previous sections. The subnet `SCA` where the bottom-up message is generated keeps a `CrossMsgsRegistry` with all `CID`s for `CrossMsgsMeta` propagated (i.e. a content-addressable key-value store), used to fulfill content resolution requests.
+For scalability reasons, when the destination subnet receives a new checkpoint with cross-net messages to be executed, it is only provided with the `CID` of the aggregated messages inside the `CrossMsgMeta`. For the subnet to be able to trigger the corresponding state changes for all the messages, it needs to fetch the payload of messages behind that `CID`, as illustrated in previous sections. The subnet `SCA` where the bottom-up message is generated keeps a `CrossMsgsRegistry` with all `CID`s for `CrossMsgsMeta` propagated (i.e. a content-addressable key-value store), used to fulfill content resolution requests.
 
 Every subnet runs a specific pubsub topic dedicated to exchange Subnet Content Resolution messages. This topic always has the following ID: `/fil/resolver/<subnet_ID>`. So when a subnet receives a `CrossMsgMeta`, it only needs to tailor a query to the topic of the source subnet of the `CrossMsgMeta` for the `CID` of the messages included in it to resolve the messages.
 
@@ -792,9 +808,9 @@ The subnet content resolution protocol can be extended to resolve arbitrary cont
 ### Resolution approaches
 The protocol implements two approaches to resolve content: 
 
-- A __push__ approach, where, as the checkpoints and `CrossMsgMetas` move up the hierarchy, miners publish to the pubsub topic of the corresponding subnet the whole tree of `CrossMsgs` behind the `CrossMsgsMeta` `CID` including all the messages targeting that subnet. To push the message, the content resolver manager publishes a `Push` message in the resolver topic of the destination subnets specifying the type of content being pushed along with its CID. When new checkpoints are committed, source subnet's proactively push the content to the destination subnets for which `CrossMsgsMeta` have been included in the checkpoint. When validators and full-nodes in the subnet come across these `Push` messages, they may choose to pick them up and cache/store them locally for when the checkpoint with the `CrossMsgsMeta` directed to them arrives, or discard them (in which case, they will need to explicitly resolve the content when required).
+- A __push__ approach, where, as the checkpoints and `CrossMsgMetas` move up the hierarchy, miners publish to the pubsub topic of the corresponding subnet the whole tree of `CrossMsgs` behind the `CrossMsgsMeta` `CID` including all the messages targeting that subnet. To push the message, the content resolver manager publishes a `Push` message in the resolver topic of the destination subnets specifying the type of content being pushed along with its CID. When new checkpoints are committed, source subnet's proactively push the content to the destination subnets for which `CrossMsgsMeta` have been included in the checkpoint. When validators and full nodes in the subnet come across these `Push` messages, they may choose to pick them up and cache/store them locally for when the checkpoint with the `CrossMsgsMeta` directed to them arrives, or discard them (in which case, they will need to explicitly resolve the content when required).
 
-- A __pull__ approach, where, upon a destination subnet receiving a checkpoint with cross-messages directed to it, miners' `CrossMsgsPool`s publish a `Pull` message in the `Source` subnet's pubsub topic to resolve the cross-messages for the specific `CID`s found in the tree of cross-message meta. These requests are answered by publishing a new  resolve message in the requesting subnet with the corresponding content resolution. The source subnet answers to the resolver topic of the subnet originating the request with a `ResponseMeta` message including the resolution of the `CID`. This new broadcast of a content resolution to the subnet's pubsub channels gives every cross-message pool a new opportunity to store or cache the content behind a `CID` even if they do not yet need it.
+- A __pull__ approach, where, upon a destination subnet receiving a checkpoint with cross-net messages directed to it, miners' `CrossMsgsPool`s publish a `Pull` message in the `Source` subnet's pubsub topic to resolve the cross-net messages for the specific `CID`s found in the tree of cross-net message meta. These requests are answered by publishing a new  resolve message in the requesting subnet with the corresponding content resolution. The source subnet answers to the resolver topic of the subnet originating the request with a `ResponseMeta` message including the resolution of the `CID`. This new broadcast of a content resolution to the subnet's pubsub channels gives every cross-net message pool a new opportunity to store or cache the content behind a `CID` even if they do not yet need it.
 
 - A __peer-to-peer fallback__: These push and pull protocols operate through the broadcast of messages to the resolver topics of the corresponding subnets, but what if the propagation of these messages fail? As a last-resort fallback, HC peers include a peer-to-peer protocol to allow the direct request of `CrossMsgMeta` and other subent-related information. Peers can choose to directly request the resolution of content from peers they know are participating in the subnet holding the content. Peers can use the validators of a subnet as their endpoionts for this fallback as their `multiaddress` is published on-chain. Additionally, other peers (and external storage services) may advertize themselves as _"servers"_ of content for a subnet (see [data availability](#data-availability) for further details).
 > Note: This fallback protocol is not implemented yet as part of the MVP.
@@ -812,7 +828,7 @@ type MsgType enum (
     PushMeta MsgType = iota
     // PullMeta requests CrossMsgs behind a CID
     PullMeta
-    // ResponseMeta is used to answer to pull requests for cross-messages.
+    // ResponseMeta is used to answer to pull requests for cross-net messages.
     ResponseMeta
     // PullLocked requests for locked state needed to perform atomic exec.
     PullLocked
@@ -850,7 +866,7 @@ type ResolveMsg struct {
 ![](https://hackmd.io/_uploads/rJd0_6tK9.png)
 
 ### Data availability
-Peers requesting content from others subnets trust that the peers in the other network from which a checkpoint with cross-messages has been propagated will resolve the content resolution requests sent to the subnet. Intuitively, the node that triggered the cross-message has no incentive on denying access to this data (as his funds have already been burnt), but data availability is an issue that is worth addressing further. The aforementioned design of the content resolution protocol assumes at least _one honest participant in the subnet_ (i.e. a peer that always answers successfully to content resolution requests) _and that the data in the subnet is always available_. In a real environment these assumption may not hold, and more complex schemes may be needed to incentivize subnet peers and ensure that every content resolution request between subnets is fulfilled, and a high-level of availability of data.
+Peers requesting content from others subnets trust that the peers in the other network from which a checkpoint with cross-net messages has been propagated will resolve the content resolution requests sent to the subnet. Intuitively, the node that triggered the cross-net message has no incentive on denying access to this data (as his funds have already been burnt), but data availability is an issue that is worth addressing further. The aforementioned design of the content resolution protocol assumes at least _one honest participant in the subnet_ (i.e. a peer that always answers successfully to content resolution requests) _and that the data in the subnet is always available_. In a real environment these assumption may not hold, and more complex schemes may be needed to incentivize subnet peers and ensure that every content resolution request between subnets is fulfilled, and a high-level of availability of data.
 
 To overcome this issue, `SCA` in subnets include the `Save()` function and peers will implement a protocol to backup the state of the function in any storage system where data can be retrievable and available independently of the state of a subnet (let this be Filecoin storage, IPFS, or any other decentralized or centralized storage systems). Having the state always available is key for:
 - The execution and validations of cross-net messages.
@@ -1002,7 +1018,7 @@ The atomic execution protocol consists of the following phases, which, combined,
     - The `SCA` checks that the `CID` of the `LockedState` matches the one submitted by the other parties, and accepts the submission. The execution will stay in an `ExecInitialized` state until all the parties submit the right `LockedState` as an `OutputState`. When this happens, the execution is marked as `ExecSuccess` and the `SCA` triggers a top-down message to the corresponding subnet to the `Merge` function of the `LockableActor` involved in the execution on every subnet. This will trigger the merge the of the `OutputState` and the unlock of the locked state.
     -  To prevent the protocol from blocking if one of the parties disappears halfway or is malicious, any party is allowed to abort the execution at any time by sending a `SubmitAtomicExec` message to the corresponding `SCA` setting the `Abort` field of `SubmitExecParams` to true. This moves the execution to an `ExecAbort` state in the `SCA`, and triggers a new top-down message to the `Finalize()` function of the `LockableState` involved in the execution on every subnet. These messages unlock the input state in the source subnets without merging any `OutputState` for the atomic execution. 
 
-- __Termination__  When the `SCA` receives the commitment of all the computed output states, and if they all match, the execution is marked as successful, possible aborts are no longer taken into account, and subnets are notified, through a top-down message, that it is safe to incorporate the output state and unlock the input state (see details above). If, instead, the `SCA` receives an `ABORT` signal from some subnet before getting commitment from all subnets, it will mark the transaction as `ExecAborted` and each subnet is  notified (through a cross-message) that it may revert/unlock their input state without performing changes to the local state.
+- __Termination__  When the `SCA` receives the commitment of all the computed output states, and if they all match, the execution is marked as successful, possible aborts are no longer taken into account, and subnets are notified, through a top-down message, that it is safe to incorporate the output state and unlock the input state (see details above). If, instead, the `SCA` receives an `ABORT` signal from some subnet before getting commitment from all subnets, it will mark the transaction as `ExecAborted` and each subnet is  notified (through a cross-net message) that it may revert/unlock their input state without performing changes to the local state.
 
 > Note: One open question when moving from fungible assets to general state is whether the firewall property can still hold. This generalized case is problematic since compromised subnets can send seemingly valid but actually corrupt input states to the other subnets involved in the atomic execution. Because subnets are only light clients of other subnets and rely on the security of their consensus, this can be hard to detect without an honest peer in the subnet raising the alert. As part of future work, we are exploring schemes that would allow the detection of invalid states in the protocol (see [detectabe misbehaviors](#detectable-misbehaviors)).
 
