@@ -581,7 +581,7 @@ CheckpointTemplate() Checkpoint
 
 As shown on the next figure, the checkpointing protocol has two distinct stages:
 - __Checkpoint Window__: In this window, the `SCA` opens a checkpoint template and starts populating it with cross-net messages arriving to the subnet (and that need to be propagated further inside the checkpoint) and with the aggregated checkpoints committed from the current subnet's children. The checkpoint window for the checkpoint in epoch `n` starts at `n-CheckPeriod` and ends at epoch `n`.
-- __Signing Window__: The signing window is the time range reserved for validators of the subnet to populate the checkpoint template with the corresponding proof of the state of the checkpoint, to sign the checkpoint, and to submit it to the corresponding `SA` in the parent for committment. The signing window for the checkpoint in epoch `n` goes from `n` to `n+CheckPeriod`. Consequently, the signing window for the checkpoint of epoch `n-CheckPeriod` and the checkpoint window for the checkpoint of epoch `n` is run in parallel. The checkpoint template provided by the `SCA` has `CrossMsgs`, `PrevCheck`, and `Epoch` already populated, and validators only have to add the corresponding `Proof` and sign it.
+- __Signing Window__: The signing window is the time range reserved for validators of the subnet to populate the checkpoint template with the corresponding proof of the state of the checkpoint, to sign the checkpoint, and to submit it to the corresponding `SA` in the parent for committment. The signing window for the checkpoint in epoch `n` goes from `n` to `n+CheckPeriod`. Consequently, the signing window for the checkpoint of epoch `n-CheckPeriod` and the checkpoint window for the checkpoint of epoch `n` is run in parallel. The checkpoint template provided by the `SCA` has `CrossMsgs`, `PrevCheck`, and `Epoch` already populated, and validators only have to add the corresponding `Proof` and sign it. If the SA is not able to gather enough votes for the commitment of the checkpoint in epoch `n`, or no checkpoint is committed in that epoch, the slot is missed, and the protocol advances to the next checkpoint window but in this case the template for `n+1` points to the last checkpoint committed, in our example `n-1`. Thus, if a checkpoint commitment fails for any reason the epoch is skipped and the template moves to the checkpoint window for the next epoch.
 
 
 ![](https://hackmd.io/_uploads/HkAodIuFc.png)
@@ -748,6 +748,8 @@ type CrossMsgs struct {
     // Raw msgs from the subnet
     Msgs  []Message   
     // Metas propagated from child subnets
+    // (full definition of CrossMsgMeta in cross-net message
+    // section)
     Metas []CrossMsgMeta 
 }
 
