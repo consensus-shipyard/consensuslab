@@ -1,8 +1,7 @@
 Hierarchical Consensus Spec and FIPs
 ===
-###### tags: `HC`, `ConsensusLab`, `Projects`, `Hierarchical Consensus`, `Spec`
 
-> This document includes the latest version of the hierarchical conesnsus spec along with the relevant FIPs to be proposed to the Filecoin community.
+> This document includes the latest version of the hierarchical consensus spec along with the relevant FIPs to be proposed to the Filecoin community.
  
 ## Revisions
 - `2022-06-14`: Basic structure and WIP
@@ -67,61 +66,61 @@ At a high level, hierarchical consensus (HC) allows for incremental, on-demand b
 
 Consensus, or establishing total order across transactions, poses a major scalability bottleneck in blockchain networks. This is particularly the case when all validators are required to process all transactions. Regardless of the specific consensus protocol implementation used, this makes blockchains unable to increase their performance by adding more participants (scale-out).
 
-In traditional distributed computing, one possible approach to overcoming this limitation is to resort to the partitioning, or sharding, of state processing and transaction ordering. In a sharded system the blockchain stack is divided into different groups called shards, each operated by its own set of nodes, which keep a subset of the state and are responsible for processing a part of the transactions sent to the system. 
+In traditional distributed computing, one possible approach to overcoming this limitation is to resort to the partitioning, or sharding, of state processing and transaction ordering. In a sharded system, the blockchain stack is divided into different groups -- called shards --, each operated by its own set of nodes, which keep a subset of the state and are responsible for processing a part of the transactions sent to the system. 
 
-The main challenge with applying traditional sharding to the Byzantine fault-tolerant context of the blockchain lies in the security/performance tradeoff. As miners are assigned to shards, there is a danger of diluting security when compared to the original single-chain (single-shard) solution. In both proof-of-work and proof-of-stake (PoS) blockchains, sharding may give the attacker the ability to compromise a single shard with only a  fraction of the mining power, potentially compromising the system as a whole. Such attacks are often referred to as _1\% attacks [1](https://ieeexplore.ieee.org/document/8510588), [2](https://dl.acm.org/doi/10.1145/2976749.2978389)_. To circumvent them, sharding systems need to periodically reassign miners to shards in an unpredictable way, so as to cope with a semi-dynamic adversary. We believe that this traditional approach to scaling, which considers the system as a monolith, is not suitable for decentralized blockchains due to their complexity.  <!--and the fact that sharded systems reshuffle state without the consent of its owners, disrupting use cases that benefit from finer control over the system topology.-->
+The main challenge with applying traditional sharding to the Byzantine fault-tolerant context of the blockchain lies in the security/performance tradeoff. As miners are assigned to shards, there is a danger of diluting security when compared to the original single-chain (single-shard) solution. In both proof-of-work and proof-of-stake (PoS) blockchains, sharding may give the attacker the ability to compromise a single shard with only a  fraction of the mining power, potentially compromising the system as a whole. Such attacks are often referred to as _1\% attacks_ [[1](https://ieeexplore.ieee.org/document/8510588), [2](https://dl.acm.org/doi/10.1145/2976749.2978389)]. To circumvent them, sharding systems need to periodically reassign miners to shards in an unpredictable way, so as to cope with a semi-dynamic adversary. We believe that this traditional approach to scaling, which considers the system as a monolith, is not suitable for decentralized blockchains due to their complexity.  <!--and the fact that sharded systems reshuffle state without the consent of its owners, disrupting use cases that benefit from finer control over the system topology.-->
 
-With __[Hierarchical Consensus](https://research.protocol.ai/publications/hierarchical-consensus-a-horizontal-scaling-framework-for-blockchains/)__ we depart from the traditional sharding approach and instead of algorithmically assigning node membership and load balancing the distribution of the state, we follow an approach where users and miners are grouped into subnets in which they can freely partake. Users (i.e. network participants) can spawn new independent networks, or child subnets, from the one they are operating in. __Each subnet can run its own independent consensus algorithm and set its own security and performance guarantees.__ Subnets in the system are organized hierarchically: each has one parent subnet and any number of child subnets, except for the root subnet (called _root network_ or _rootnet_), which has no parent and is the initial anchor of trust. To mitigate the 1\% attacks pertinent to traditional sharding, subnets in hierarchical consensus are [firewalled](https://ieeexplore.ieee.org/abstract/document/8835275), in the sense that a security violation in a given subnet is limited, in effect, to that particular subnet and its children, with bounded economic impact on its ancestors. This bounded impact of an attack is, at most, the circulating supply of the parent token in the child subnet. Moreover, ancestor subnets help secure their descendant subnets through _checkpointing_, which helps alleviate attacks on a child subnet, such as long-range and related attacks in the case of a PoS-based subnet.
+With __[Hierarchical Consensus](https://research.protocol.ai/publications/hierarchical-consensus-a-horizontal-scaling-framework-for-blockchains/)__, we depart from the traditional sharding approach and instead of algorithmically assigning node membership and load balancing the distribution of the state, we follow an approach where users and miners freely self-select into subnets. Users (i.e. network participants) can spawn new independent networks, or child subnets, from the one they are operating in. __Each subnet can run its own independent consensus algorithm and set its own security and performance guarantees.__ Subnets in the system are organized hierarchically: each has one parent subnet and any number of child subnets, except for the root subnet (called _root network_ or _rootnet_), which has no parent and is the initial anchor of trust. Subnets can semlessly communicate and interact with state hosted in other subnets through cross-net messages. 
 
-Finally, subnets can semlessly communicate and interact with state hosted in other subnets through cross-net messages.
+To mitigate the 1\% attacks pertinent to traditional sharding, subnets in hierarchical consensus are [firewalled](https://ieeexplore.ieee.org/abstract/document/8835275), in the sense that the effects of a security violation in a given subnet are limited to that particular subnet and its children, with bounded economic impact on its ancestors. This bounded impact of an attack is, at most, the circulating supply of the parent token in the child subnet. Moreover, ancestor subnets help secure their descendant subnets through _checkpointing_, which helps alleviate attacks on a child subnet, such as long-range and related attacks in the case of a PoS-based subnet.
 
 ### Glossary
 For clarity, we include here a glossary of HC-related concepts used throughout the spec:
-- __Subnet__: Hierarchical consensus sidechain that keeps its own independent state, consensus algorithm, message pool, and broadcast layer, but that is able to seamlessly interact and communciate with other subnets in the hierarchy.
+- __Subnet__: Hierarchical consensus sidechain that keeps its own independent state, consensus algorithm, message pool, and broadcast layer, but that is able to seamlessly interact and communicate with other subnets in the hierarchy.
 - __Rootnet__: First network from which all new subnets are spawned and the hierarchy is built. In our case, the Filecoin mainnet.
 - __Parent Subnet__: Network from which a new subnet (child) is spawned. The parent is the anchor of trust in the hierarchy for all of its children.
 - __Peer/Node of a subnet__: A full-node participating in a specific subnet (i.e. a member of the subnet syncing its full state).
-- __User/Client__: Light-node of a subnet (i.e. participant not necessarily syncing the full state of the subnet).
-- __Native Token__: Token of the rootnet used for the interaction with the HC protocol. In our case, `FIL`.
-- __Circulating Supply__: Amount of native tokens injected for their use in a subnet.
+- __User/Client of a subnet__: Light-node of a subnet (i.e. participant but not necessarily syncing the full state of the subnet).
+- __Native Token__: Rootnet token, used for the interaction with the HC protocol. In our case, `FIL`.
+- __Circulating Supply__: Number of native tokens transferred into a subnet for use therein.
 - __Cross-net messages__: Messages originated in a subnet and directed to some other subnet in the hierarchy.
-- __Collateral__: Amount of native tokens staked in a subnet's parent by subnet's validators. This stake is slashed when a misbehavior in the subnet is detected and successfully reported to the parent.
+- __Collateral__: Amount of native tokens staked in a subnet's parent by the subnet's validators. This stake is slashed when a misbehavior in the subnet is detected and successfully reported to the parent.
 
 ## Architecture
 The system starts with a _rootnet_ which, at first, keeps the entire state and processes all the transaction in the system (like present-day Filecoin). Any subset of users of the rootnet can spawn a new subnet from it.
 
 > High-level architecture of hierarchical consensus
-![](https://hackmd.io/_uploads/BJVIhk8Fc.png)
+> ![](https://hackmd.io/_uploads/BJVIhk8Fc.png)
 
 This subnet instantiates a new network with its own state, independent from the root network, replicated among the subset of participants of the overall system who are members of the subnet. From this point on, the new subnet processes transactions involving the state in the subnet independently of the root chain. Further subnets can then be spawned from any point in the hierarchy. 
 
 From the perspective of a peer in the network, spawning or syncing with a new subnet starts a set of new processes to handle the independent state, mempool, and the specific [GossipSub](https://github.com/libp2p/specs/blob/master/pubsub/gossipsub/gossipsub-v1.1.md) topic to broadcast and receive subnet-specific messages.
 
 > Stack of an HC node
-![](https://hackmd.io/_uploads/BJla0JLYq.png)
+> ![](https://hackmd.io/_uploads/BJla0JLYq.png)
 
 Subnets are able to interact with the state of other subnets (and that of the rootnet) through _[cross-subnet](#Cross-net-messages "Cross-net messages")_ (or, simply,  _cross-net_) messages. __Full-nodes and validators in a given subnet need trusted access to the state of its parent subnet.__ We implement this by having them synchronise the chain of the parent subnet (i.e. child subnet full-nodes also run full nodes on the parent subnet). 
  
 As it may be hard to enforce an honest majority of validators in every subnet, which can result in the subnet chain being compromised or attacked, the system provides a __firewall security property__. This guarantees that, for token exchanges, the impact of a child subnet being compromised is limited, in the worst case, to its circulating supply of the native token, determined by the (positive) balance between cross-net transactions entering the subnet and cross-net transactions leaving the subnet. Addresses in a subnet are funded through cross-net transactions that inject tokens into the subnet. In order for users to be able to spawn a new subnet, they need to deposit __initial collateral__ at the new subnet's parent. This collateral offers a minimum level of trust to new users injecting tokens into the subnet and can be slashed in case of misbehavior by subnet validators.
 
-Validators in subnets are rewarded with fees for the transactions executed in the subnet. Subnets can run any consensus algorithm of their choosing, provided it can meet a defined interface and determine the consensus proofs they want to include for light clients (i.e. nodes that do not synchronize and retain a full copy of the blockchain and thus do not verify all transactions). Subnets periodically commit a proof of their state in their parent through [checkpoints](#Checkpointing "Checkpointing"). These proofs are propagated to the top of the hierarchy, making them accessible to any member of the system. A checkpoint should include enough information that any client receiving it is able to verify the correctness of the subnet consensus. Subnets are free to choose a proof scheme that suits their consensus best (e.g. multi-signature, threshold signature, SPV (Simple Verification) or ZK (zero-knowledge) proofs, etc.). With this, users are able to determine the level of trust over a subnet according to the security level of the consensus run by the subnet and the proofs provided to light clients. Checkpoints are also used to propagate the information pertaining to cross-net messages to other subnets in the hierarchy.
+Validators in subnets are rewarded with fees for the transactions executed in the subnet. Subnets can run any consensus algorithm of their choosing, provided it can meet a defined interface, and they can determine the consensus proofs they want to include for light clients (i.e. nodes that do not synchronize and retain a full copy of the blockchain and thus do not verify all transactions). Subnets periodically commit a proof of their state in their parent through [checkpoints](#Checkpointing "Checkpointing"). These proofs are propagated to the top of the hierarchy, making them accessible to any member of the system. A checkpoint should include enough information that any client receiving it is able to verify the correctness of the subnet consensus. Subnets are free to choose a proof scheme that suits their consensus best (e.g. multi-signature, threshold signature, SPV (Simple Verification) or ZK (zero-knowledge) proofs, etc.). With this, users are able to determine the level of trust over a subnet according to the security level of the consensus run by the subnet and the proofs provided to light clients. Checkpoints are also used to propagate the information pertaining to cross-net messages to other subnets in the hierarchy.
 
-The two key modules that implement all the logic for hierarchical consensus are:
-- __[Subnet actor (SA)](#Subnet-Actor-SA "Subnet Actor (SA)")__: A user-defined actor deployed in the parent subnet from which the subnet wants to be spawned and that implements the subnet actor interface with the core logic and governing policies for the operation of the subnet. 
-- __[The Subnet Coordinator Actor (SCA)](#Subnet-Coordinator-Actor-SCA "Subnet Coordinator Actor (SCA)")__: A system actor deployed in genesis (i.e. builtin-actor) in every HC-compatible subnet. The SCA implements the logic of the HC protocol and handles all the interactions with the rest of the system and their lifecycle. It is included as an additional builtin-actor in the builtin-actors bundle.
+The two key modules that implement the logic for hierarchical consensus are:
+- __[Subnet Actor (SA)](#Subnet-Actor-SA "Subnet Actor (SA)")__: A user-defined actor deployed in the parent subnet from which the subnet wants to be spawned and that implements the subnet actor interface with the core logic and governing policies for the operation of the subnet. 
+- __[The Subnet Coordinator Actor (SCA)](#Subnet-Coordinator-Actor-SCA "Subnet Coordinator Actor (SCA)")__: A system actor deployed in the genesis of every HC-compatible subnet. The SCA implements the logic of the HC protocol and handles all the interactions with the rest of the system. It is included as an additional built-in actor in the built-in actors bundle.
 
 > Snapshot of three subnets with their corrsponding actors.
-![](https://hackmd.io/_uploads/ByfPG7IYq.png)
+> ![](https://hackmd.io/_uploads/ByfPG7IYq.png)
 
-The reference implementation of both actors in Filecoin currently target the FVM. The SCA is implemented as an additional ` builtin-actor` while SA is an FVM user-defined actor.
+The reference implementations of both actors in Filecoin currently target the FVM. The SCA is implemented as an additional `builtin-actor` while SA is an FVM user-defined actor.
 
 ## Subnet Actor (SA)
-The `SubnetActor` interface defines the core functions and basic rules required for an actor to implement the logic for a new subnet. This approach gives users total flexibility to configure the consensus, security assumption, checkpointing strategy, policies, etc. of their new subnet so it fulfills all the needs of their use case.
+The `SubnetActor` interface defines the core functions and basic rules required for an actor to implement the logic for a new subnet. This approach gives users total flexibility to configure the consensus, security assumption, checkpointing strategy, policies, etc. of their new subnet, so that it fulfils the needs of their use case.
 
-The Subnet Actor is the public contract accessible by users in the system to determine the kind of child subnet being spawned and controlled by the actor. From the moment the SA for a new subnet is spawned in the parent chain, users looking to participate in the subnet can instantiate their new chain and even start mining on it. However, in order for the subnet to be able to interact with the rest of the hierarchy, it needs to be registered by staking an amount of native tokens over the `CollateralThreshold` in the parent's SCA _(see [Collateral and slashing](#Collateral-and-slashing "Collateral and slashing"))_.
+The subnet actor is the public contract accessible by users in the system to determine the kind of child subnet being spawned and controlled by the actor. From the moment the SA for a new subnet is spawned in the parent chain, users looking to participate in the subnet can instantiate the new chain and even start mining on it. However, in order for the subnet to be able to interact with the rest of the hierarchy, it needs to be registered by staking an amount of native tokens over the `CollateralThreshold` in the parent's SCA _(see [Collateral and slashing](#Collateral-and-slashing "Collateral and slashing"))_.
 
-##### Subnet Actor Interface
-A reference implementation of the subnet actor interface exists, but users are permitted to implement custom governing policies and mechanics that better suit their needs (e.g. request a dynamic collateral for validators, add a leaving fee coefficient to penalize validators leaving the subnet before some time frame, require a minimum number of validators, include latency limits, etc.).
+##### Subnet actor interface
+We provide a reference implementation of the subnet actor interface, but users are permitted to implement custom governing policies and mechanics that better suit their needs (e.g. request dynamic collateral for validators, add a leaving fee coefficient to penalize validators leaving the subnet before some time frame, require a minimum number of validators, include latency limits, etc.).
 
 > Interface every subnet actor needs to implement. These functions
 > are triggered when a `message` is sent for their corresponding `methodNum`. 
@@ -158,13 +157,13 @@ type SubnetActor interface{
     
     // Kill performs all the sanity-checks required before completely
     // killing a subnet. It must propagate a `Kill` message to the SCA
-    // to unregister the subnet from the hierarchy (making it no longer)
+    // to unregister the subnet from the hierarchy, making it no longer
     // discoverable.
     // (methodNum = 4)
     Kill()
     
     // SubmitCheckpoint is called by validators looking to submit a
-    // signed checkpoint for its propagation. This function performs all the
+    // signed checkpoint for propagation. This function performs all the
     // subnet-specific checks required for the final commitment of the 
     // checkpoint in the SCA (e.g. in the reference implementation of
     // the SubnetActor, SubmitCheckpoints waits for more than 2/3 of the validators
@@ -191,7 +190,7 @@ type SubnetState struct {
     Name string
     // ID of the parent subnet
     ParentID address.SubnetID
-    // Type of Consensus algorithm.
+    // Type of consensus algorithm.
     Consensus hierarchical.ConsensusType
     // Minimum stake required for an address to join the subnet
     // as a miner
@@ -202,7 +201,7 @@ type SubnetState struct {
     // Total collateral currently deposited in the
     TotalStake abi.TokenAmount
     // BalanceTable with the distribution of stake by address
-    Stake cid.Cid // HAMT[tokenAmount]address
+    Stake cid.Cid // HAMT[address]tokenAmount
     // State of the subnet (Active, Inactive, Terminating)
     Status Status
     // Genesis bootstrap for the subnet. This is created
@@ -210,10 +209,9 @@ type SubnetState struct {
     Genesis []byte
     // Checkpointing period. Number of epochs between checkpoint commitments
     CheckPeriod abi.ChainEpoch
-    // Checkpoints submit to SubnetActor per epoch
+    // Checkpoints submitted to the SubnetActor per epoch
     Checkpoints cid.Cid // HAMT[epoch]Checkpoint
-    // CheckpointVotes includes the validator votes for the checkpoint
-    // of the current window.
+    // Validator votes for the checkpoint of the current window.
     CheckpointVotes cid.Cid // HAMT[cid]CheckVotes
     // ValidatorSet is a set of validators
     ValidatorSet []hierarchical.Validator
