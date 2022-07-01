@@ -220,7 +220,7 @@ type SubnetState struct {
 }
 ```
 ##### Constructor Parameters
-> Constructor Parameters for reference implementation of subnet actor.
+> Constructor parameters for the reference implementation of the subnet actor.
 ```go
 type ConstructParams struct {
     // ID of the current network
@@ -245,9 +245,9 @@ type ConstructParams struct {
 > TODO: There is an on-going revision of `ConstructParams` to include a way to provide arbitrary input arguments to a subnet.
 
 ## Subnet Coordinator Actor (SCA)
-The main entity responsible for handling all the lifecycle of child subnets in a specific chain is the Subnet Coordinator Actor (`SCA`). The `SCA` is a builtin-actor that exposes the interface for subnets to interact with the hierarchical consensus protocol. This actor includes all the available functionalities related to subnets and their management. It also enforces all the security requirements, fund management, and cryptoeconomics of the hierarchical consensus, as Subnet Actors are user-defined and can't be (fully) trusted. The `SCA` has a reserved address ID `f064`.
+The main entity responsible for handling all the lifecycle of child subnets in a specific chain is the subnet coordinator actor (`SCA`). The `SCA` is a built-in actor that exposes the interface for subnets to interact with the hierarchical consensus protocol. This actor includes all the available functionalities related to subnets and their management. It also enforces all the security requirements, fund management, and cryptoeconomics of hierarchical consensus, as subnet actors are user-defined and can't be (fully) trusted. The `SCA` has a reserved address ID `f064`.
 
-The MVP implementation of this builtin-actor can be found [here](https://github.com/adlrocha/builtin-actors/tree/master/actors/hierarchical_sca). The `SCA` exposes the following functions:
+The MVP implementation of this built-in actor can be found [here](https://github.com/adlrocha/builtin-actors/tree/master/actors/hierarchical_sca). The `SCA` exposes the following functions:
 
 
 ##### SCA Functions
@@ -260,9 +260,9 @@ type SCA interface{
     Constructor(ConstructParams)
     
     // Register expects as source the address of the subnet actor of
-    // the subnet that wants to be registered. Its
-    // `value` an amount of collateral over the `CollateralThreshold`.
-    // This functions activates the subnet and from there on other
+    // the subnet that wants to be registered. The message's `value` 
+    // is the subnet's collateral and must exceed the `CollateralThreshold`.
+    // This functions activates the subnet. From then on, other
     // subnets in the system are allowed to interact with it and the
     // subnet can start commtting its checkpoints.
     // (methodNum = 2)
@@ -286,7 +286,7 @@ type SCA interface{
     // (methodNum = 5)
     Kill()
     
-    // Kill expects as source the address of the subnet actor for which the
+    // CommitChildCheckpoint expects as source the address of the subnet actor for which the
     // checkpoint is being committed. The function performs some basic checks
     // to ensure that checkpoint is valid and it persist it in the SCA state.
     // (methodNum = 6)
@@ -345,7 +345,7 @@ type SCA interface{
 type SCAState struct {
     // ID of the current network
     NetworkName address.SubnetID
-    // Total of active subnets spawwned from this one
+    // Number of active subnets spawned from this one
     TotalSubnets uint64
     // Minimum stake required to create a new subnet
     CollateralThreshold abi.TokenAmount
@@ -361,7 +361,7 @@ type SCAState struct {
     CheckMsgsRegistry cid.Cid // HAMT[cid]CrossMsgs
     // Latest nonce of a cross message sent from subnet.
     Nonce             uint64  
-    // BottomUpNonce of bottomup messages for msgMeta received from che    kpoints.
+    // Nonce of bottom-up messages for msgMeta received from checkpoints.
     // This nonce is used to mark with a nonce the metadata about cross-net
     // messages received in checkpoints. This is used to order the
     // bottom-up cross-messages received through checkpoints.
@@ -435,12 +435,12 @@ Creating a new subnet instantiates a new independent state with all its subnet-s
 
 To spawn a new subnet, peers need to deploy a new `SubnetActor` that implements the core logic for the governance of the new subnet. The contract specifies the consensus protocol to be run by the subnet and the set of policies to be enforced for new members, leaving members, checkpointing, killing the subnet, etc. For a new subnet to interact with the rest of the hierarchy, it needs to be registered in the `SCA` of the parent chain. The `SCA` is a system actor that exposes the interface for subnets to interact with the hierarchical consensus protocol. This smart contract includes all the available functionalities related to subnets and their management. And, as `SA`s are user-defined and untrusted, it also enforces security requirements, fund management and the cryptoeconomics of hierarchical consensus.
 
-Subnets are identified with a unique ID that is inferred deterministically from the ID of its ancestor and from the ID of the `SA` that governs the subnet's operation. This deterministic naming enables the discovery of --- and interaction with --- subnets from any other point in the hierarchy without the need of a discovery service: peers only need to send a message to the subnet's specific pubsub topic, identified with the subnet's ID.
+Subnets are identified with a unique ID that is inferred deterministically from the ID of its parent and from the ID of the `SA` that governs the subnet's operation. This deterministic naming enables the discovery of --- and interaction with --- subnets from any other point in the hierarchy without the need for a discovery service: peers only need to send a message to the subnet's specific pubsub topic, identified with the subnet's ID.
 
 For a subnet to be registered in the `SCA`, the actor needs to send a new message to the `Register()` function of the `SCA`. This transaction includes the amount of tokens the subnet wants to add as collateral in the parent chain to secure the child chain. The `SA` may implement custom policies that needs to be fulfilled before registering the subnet and triggering `Register()` message to the `SCA`, like for instance waiting for a minimum number of validators to join the network and put some collateral. The `SA` will also need to require that enough collateral is staked before registering to ensure that the message succeeds. For a subnet to be activated in HC, at least `CollateralThreshold` needs to be staked in the `SCA`.
 
 ### Leaving and killing a subnet
-Members of a subnet can leave the subnet at any point by sending a message to the subnet's `SA` in the parent chain. If the miner fulfills the requirements to leave the subnet defined in the subnet's `SA` when it was deployed, a message to the `SCA` is triggered by the `SA` to release the miner's collateral.  If a validator leaving the subnet brings the collateral of the subnet below `CollateralThreshold`, the subnet gets in an `Inactive` state, and it can no longer interact with the rest of chains in the hierarchy or checkpoint to the top chain. To recover its `Active` state, any participant of the protocol (within or outside the subnet, user or validator) need to put up additional collateral.
+Members of a subnet can leave the subnet at any point by sending a message to the subnet's `SA` in the parent chain. If the miner fulfils the requirements to leave the subnet defined in the subnet's `SA` when it was deployed, a message to the `SCA` is triggered by the `SA` to release the miner's collateral.  If a validator leaving the subnet brings the collateral of the subnet below `CollateralThreshold`, the subnet gets in an `Inactive` state, and it can no longer interact with the rest of the chains in the hierarchy or checkpoint to the top chain. To recover its `Active` state, any participant in the protocol (within or outside the subnet, user or validator) needs to put up additional collateral.
 
 Validators of a subnet can also kill a subnet by sending a `ReleaseCollateral()` message to the `SA`. Similar to the previous situation, the `SA` sends a message to the `SCA` to release all the collateral for the subnet if all the requirements to kill the subnet are fulfilled.
 
@@ -458,7 +458,7 @@ This naming convention allows to deterministically discover and interact with an
 
 Peers participating in a subnet are subscribed to all subnet-specific topics and are able to pick up the message. Subnet-specific pubsub topics are named also deterministically by using the subnet's ID as a suffix to the topic. Thus, subnets spawn (at least) three different topics for their operation: the `/fil/msgs/<subnetID>` topics to broadcast mempool messages; the `/fil/blocks/<subnetID>` topic to distribute new blocks; and the `/fil/resolver/<subnetID>` topic where cross-net content resolution messages are exchanged. These topics for subnet `/root/f0100` are identified as `/fil/msgs/root/f0100`, `/fil/blocks/root/f0100`, `/fil/resolver/root/f0100`, respectively.
 
-Peers can also poll the available child chains of a specific subnet by sending a query to the `SCA` requesting to list its children. This allows any peer to traverse the full hierarchy and update their view of available subnets.
+Peers can also poll the available child chains of a specific subnet by sending a query to the `SCA` requesting a list of its children. This allows any peer to traverse the full hierarchy and update their view of available subnets.
 
 In the future, HC may implement an additional DNS-like actor in the system that allows the discovery of subnets using human-readable names, performing a translation between a domain name and the underlying ID of a subnet.
 
@@ -470,7 +470,7 @@ type SubnetID struct {
     Parent string 
     // Address of the subnet actor governing the operation
     // of the subnet in the parent.
-    // (it must be a an ID address)
+    // (it must be an ID address)
     Actor address.Address
 }
 ```
@@ -492,28 +492,28 @@ Bytes() []byte
 FromString(string) (SubnetID, error)
 // Returns the common parent of the current subnet and the one
 // given as an argument.
-CommonParent(subnet.ID) Subnet.ID
-// Returns the next subnet down in the hierarchy in the path given in 
-// the current SubnetID from the one given as an argument. It errors
-// if there is not way to go down the path from the given argument.
+CommonParent(SubnetID) SubnetID
+// Returns the next subnet down in the hierarchy in the path of the 
+// receiving SubnetID, starting from the prefix given as an argument. 
+// It errors if there is no such path leading down.
 // 
 // Example: 
 // `/root/f0100/f0200`.Down(`/root`) = `/root/f0100`
-Down(subnetID) (SubnetID, error)
-// Returns the next subnet up in the hierarchy in the path given in 
-// the current SubnetID from the one given as an argument. It errors
-// if there is not way to go up the path from the given argument.
+Down(SubnetID) (SubnetID, error)
+// Returns the next subnet up in the hierarchy in the path of the 
+// receiving SubnetID, starting from the prefix given as an argument. 
+// It errors if there is no such path leading up.
 // 
 // Example: 
 // `/root/f0100/f0200`.Up(`/root/f0100`) = `/root`
-Up(subnetID) (SubnetID, error)
+Up(SubnetID) (SubnetID, error)
 ```
 
 ## Hierarchical Address
 HC uses [Filecoin addresses](https://spec.filecoin.io/#section-appendix.address) for its operation. In order to deduplicate addresses from different subnets, HC introduces a new address protocol with ID `4` called _hierarchical address (HA)_. A hierarchical address is just a raw Filecoin address with additional information about the subnet ID the address refers to. 
 
 There are 2 ways a Filecoin address can be represented. An address appearing on chain will always be formatted as raw bytes. An address may also be encoded to a string, this encoding includes a checksum and network prefix. An address encoded as a string will never appear on chain, this format is used for sharing among humans. A hierarchical address has the same structure of a plain Filecoin address. In this case, the payload of hierarchical addresses don't have a fixed size, and their size depend on the length of the `SubnetID` and the raw address used. Thus, the payload of a hierarchical address has the following structure:
-- __Subnet Size (1 byte)__: Represents the number of bytes of the `SubnetID` included the address as a `varInt`. It is used to delimit the bytes of the payload of the `SubnetID` with those of the raw address. Due to the maximum size of `SubnetID` the `varInt` will never use more than 1 byte. 
+- __Subnet Size (1 byte)__: Represents the number of bytes of the `SubnetID` as a `varInt`. It is used to delimit the bytes of the payload of the `SubnetID` from those of the raw address. Due to the maximum size of `SubnetID` the `varInt` will never use more than 1 byte. 
 - __Address Size (1 byte)__: Represents the size of the raw address as a `varInt` (which is also expected to be at most 1-byte-long). HA supports all types of filecoin addresses as raw addresses (from IDs to BLS and SECPK addresses). The size of the address flags the total size of the hierarchical address payload. Consequently, the total size of a hierarchical address' payload can be easily computed as `2 + SIZE_SUBNETID + SIZE_ADDR`. 
 - __SubnetID (up to 74 bytes)__: String representation of the subnet ID (e.g. `/root/f01010`). The maximum size is set to support at most 3 levels of subnets using subnet IDs with the maximum id possible (which may never be the case, so effectively this container is able to support significantly more subnet levels). The size of `/root` is 5 bytes, and each new level can have at most size `23` (`22` bytes for the number of characters of the `MAX_UINT64` ID address and 1 byte per separator).
 - __RawAddress (up to 66 bytes)__: Byte representation of the raw address. The maximum size is determined by the size of the SECPK address, the largest type of address in the Filecoin network.
@@ -538,16 +538,16 @@ With hierarchical addresses three new functions are introduced to Filecoin addre
 Finally, a pair of keys from a user control the same address in every subnet in the system. Thus, the raw address determines the ownership of a specific HA. 
 
 ## Checkpointing
-Checkpoints are used to anchor a subnet's security to that of its parent network, as well as to propagate information from a child chain to other subnets in the system. Checkpoints for a subnet can be verified at any point using the state of the subnet chain which can then be used to generate proofs of misbehaviors in the subnet (or so-called _fraud/fault proofs_) which, in turn, can be used for penalizing misbehaving entities (_"slashing"_). See [detectable misbehaviors](#Detectable-misbehaviors "Detectable misbehaviors") for further details.
+Checkpoints are used to anchor a subnet's security to that of its parent network, as well as to propagate information from a child chain to other subnets in the system. Checkpoints for a subnet can be verified at any point using the state of the subnet chain which can then be used to generate proofs of misbehaviors in the subnet (or so-called _fraud/fault proofs_), which, in turn, can be used for penalizing misbehaving entities (_"slashing"_). See [detectable misbehaviors](#Detectable-misbehaviors "Detectable misbehaviors") for further details.
 
 Checkpoints need to be signed by miners of a child chain and committed to the parent chain through their corresponding `SA`. The specific signature policy is defined in the `SA` and determines the type and minimum number of signatures required for a checkpoint to be accepted and validated by the `SA` for its propagation to the top chain. Different signature schemes may be used here, including multi-signatures or threshold signatures among subnet miners. For instance, in the reference implementation of `SA`, the actor waits for more than `2/3` of the validators in the subnet to send the valid checkpoint signed before propagating it to the `SCA` for commitment. Alternative verification policies for a subnet can be implemented in the `SubmitCheckpoint()` function of the subnet actor interface. 
 
 In order for a new checkpoint to be accepted for commitment in `SCA`, the source of the message `CommitChildCheckpoint()` needs to be the address of the subnet actor of the corresponding subnet; the subnet needs to be in an `Active` state (i.e. its collateral is over `CollateralThreshold`); the epoch of the checkpoint should be a multiple of `CheckPeriod` and larger that that of the previous checkpoint; and the checkpoint must point to the `CID` of the previous checkpoint committed by the subnet. 
 
-When spawned, subnets are allowed to configure the `CheckPeriod` that better suits their needs and the specifics of its consensus algorithm.
+When spawned, subnets are allowed to configure the `CheckPeriod` that better suits their needs and the specifics of their consensus algorithm.
 
 ### Checkpoint Commitment
-As an example, lets consider a checkpoint for subnet `/root/f0100/f0200`. Every `CheckPeriod` (in terms of subnet block time), validators access the checkpoint template that needs to be signed and populated by calling the `CheckpointTemplate()` state accesor from `SCA` in `/root/f0100/f0200`. Once signed and populated, checkpoints from `/root/f0100/f0200` are submitted to the `SA` with ID `f0200` of the subnet network `/root/f0100` by sending a message to `SubmitCheckpoint()`. After performing the corresponding checks and waiting for the commitment conditions (i.e. `2/3` of the validators sending a signed checkpoint in its reference implementation), this actor then triggers a message to `/root/f0100` `SCA`'s `CommitChildCheckpoint()` function to commit the checkpoint.
+As an example, lets consider a checkpoint for subnet `/root/f0100/f0200`. Every `CheckPeriod` (in terms of subnet block time), validators access the checkpoint template that needs to be signed and populated by calling the `CheckpointTemplate()` state accessor from `SCA` in `/root/f0100/f0200`. Once signed and populated, checkpoints from `/root/f0100/f0200` are submitted to the `SA` with ID `f0200` of subnet `/root/f0100` by sending a message to `SubmitCheckpoint()`. After performing the corresponding checks and waiting for the commitment conditions (i.e. `2/3` of the validators sending a signed checkpoint in its reference implementation), this actor then triggers a message to `/root/f0100` `SCA`'s `CommitChildCheckpoint()` function to commit the checkpoint.
 
 When the checkpoint is committed, `SCA` in `/root/f0100` is responsible for aggregating the checkpoint from `/root/f0100/f0200` with those of other children of `/root/f0100`, and for generating a new checkpoint for `/root/f0100` that is then propagated to its parent chain, `/root`. The committment of checkpoints also triggers the execution and propagation of cross-net messages. As checkpoints flow up the chain, the `SCA` of each chain picks up these checkpoints and inspects them to propagate potential state changes triggered by messages included in the cross-net messages that have the `SCA`'s subnet as a destination subnet (see [Cross-net messages](#Cross-net-messages "Cross-net messages")).
 
