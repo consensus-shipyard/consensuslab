@@ -8,6 +8,7 @@ Hierarchical Consensus Spec and FIPs
 - `2022-06-17`: Draft for up to cross-net messages.
 - `2022-06-20`: Content resolution and atomic execution protocols. Detectable misbehaviors.
 - `2022-06-21`: First draft with all sections and linking [FIP draft](https://hackmd.io/gBmBo6ChQ4ajqN8RtKdJ9A).
+- `2022-07-04`: Internal review by ConsensusLab (see [PR](https://github.com/protocol/ConsensusLab/pull/113)).
 
 ### Spec Status Legend
 | Spec state |	Label |
@@ -120,71 +121,9 @@ The `SubnetActor` interface defines the core functions and basic rules required 
 
 The subnet actor is the public contract accessible by users in the system to determine the kind of child subnet being spawned and controlled by the actor. From the moment the SA for a new subnet is spawned in the parent chain, users looking to participate in the subnet can instantiate the new chain and even start mining on it. However, in order for the subnet to be able to interact with the rest of the hierarchy, it needs to be registered by staking an amount of native tokens over the `CollateralThreshold` in the parent's SCA _(see [Collateral and slashing](#Collateral-and-slashing "Collateral and slashing"))_.
 
-##### Subnet actor interface
+#### Subnet actor interface
 We provide a reference implementation of the subnet actor interface, but users are permitted to implement custom governing policies and mechanics that better suit their needs (e.g. request dynamic collateral for validators, add a leaving fee coefficient to penalize validators leaving the subnet before some time frame, require a minimum number of validators, include latency limits, etc.).
 
-> Interface every subnet actor needs to implement. These functions
-> are triggered when a `message` is sent for their corresponding `methodNum`. 
-```go
-type SubnetActor interface{
-    // Initializes the state of the subnet actor and sets
-    // all its initial parameters.
-    // (methodNum = 1)
-    Constructor(ConstructParams)
-    
-    // It expects as `value` the amount of collateral the 
-    // source wants to stake to become part of the subne.
-    // It triggers all check to determine if the source is eligible
-    // to become part of the subnet, and must propagate an `AddCollateral` message
-    // to the SCA to trigger the registration.
-    // 
-    // Join is also responsible to send a `Register` message to the SCA
-    // whenever the `CollateralThreshold` is reached. This function can also
-    // be used to AddCollateral for the subnet in the SCA. Additional
-    // checks for this operation may be included. As a result of the
-    // execution an `AddCollateral` message must be sent to the SCA 
-    // including the added collateral.
-    // (methodNum = 2)
-    Join()
-    
-    // Called by participants that want to leave the subnet. It triggers all
-    // the checks to see if the source is eligible to leave the subnet.
-    // This function must propagate a `ReleaseCollateral` message to the SCA.
-    // The SCA will then release the corresponding stake of the validator in
-    // a message to the subnet actor so the subnet actor can trigger a message
-    // returning the funds to the leaving validtor.
-    // (methodNum = 3)
-    Leave()
-    
-    // Kill performs all the sanity-checks required before completely
-    // killing (e.g. check that all validators have released
-    // their stake, or that there are no user-funds left in the subnet's
-    // state). It must propagate a `Kill` message to the SCA
-    // to unregister the subnet from the hierarchy, making it no longer
-    // discoverable.
-    // (methodNum = 4)
-    Kill()
-    
-    // SubmitCheckpoint is called by validators looking to submit a
-    // signed checkpoint for propagation. This function performs all the
-    // subnet-specific checks required for the final commitment of the 
-    // checkpoint in the SCA (e.g. in the reference implementation of
-    // the SubnetActor, SubmitCheckpoints waits for more than 2/3 of the validators
-    // to sign a valid checkpoint to propagate it to the SCA).
-    // 
-    // This function must propagate a `CommitChildCheckpoint` message to the SCA
-    // to commit the checkpoint.
-    // (methodNum = 5)
-    SubmitCheckpoint(Checkpoint)
-    
-    // CheckEquivocation is called by the SCA to perform consensus-specific
-    // checks when an agreement equivocation is reported. It receives as input
-    // the chain of the last `finality_delay` blocks including the invalid
-    // blocks and the chain with what is supposed to be the valid block.
-    // (methodNum = 6)
-    CheckEquivocation(invalid []Block, valid []Block)
-}
-```
 ##### SubnetActor state
 > Example of state of the subnet actor from the reference implementation.
 ```go
@@ -192,28 +131,38 @@ type SubnetState struct {
     // Human-readable name of the subnet.
     Name string
     // ID of the parent subnet
-    ParentID address.SubnetID
+    ParentID SubnetID
     // Type of consensus algorithm.
     Consensus hierarchical.ConsensusType
-    // Minimum stake required for an address to join the subnet
+    // Minimum collateral required for an address to join the subnet
     // as a miner
-    MinMinerStake abi.TokenAmount
+    MinMinerCollateral TokenAmount
     // Total collateral currently deposited in the
     // SCA from the subnet
-    TotalStake abi.TokenAmount
+    TotalStake TokenAmount
     // BalanceTable with the distribution of stake by address
-    Stake cid.Cid // HAMT[address]tokenAmount
+    // This CID points to a HAMT where the key is the address of
+    // the validator, and the value the amount of tokens staked
+    // by the validator.
+    Collateral Cid<HAMT<Address, TokenAmount>>
     // State of the subnet (Active, Inactive, Terminating)
     Status Status
     // Genesis bootstrap for the subnet. This is created
     // when the subnet is generated.
     Genesis []byte
     // Checkpointing period. Number of epochs between checkpoint commitments
-    CheckPeriod abi.ChainEpoch
+    CheckPeriod ChainEpoch
     // Checkpoints submitted to the SubnetActor per epoch
-    Checkpoints cid.Cid // HAMT[epoch]Checkpoint
+    // This CID points to a HAMT where the key is the epoch
+    // of the committed checkpoint, and the value the
+    // the corresponding checkpoint.
+    Checkpoints Cid<HAMT<ChainEpoch, Checkpoint>>
     // Validator votes for the checkpoint of the current window.
-    CheckpointVotes cid.Cid // HAMT[cid]CheckVotes
+    // The CID points to a HAMT where the keys are the CID of the
+    // checkpoint being voted in the current window and the value
+    // the list of addresses of validators that have voted for
+    // that checkpoint.
+    CheckpointVotes Cid<HAMT<Cid, []Address>>
     // List of validators in the subnet
     ValidatorSet []hierarchical.Validator
     // Minimal number of validators required for the subnet
@@ -226,39 +175,363 @@ type SubnetState struct {
 ```go
 type ConstructParams struct {
     // ID of the current network
-    NetworkName     address.SubnetID      
+    NetworkName     SubnetID
     // Human-readable name for the subnet
-    Name            address.SubnetID  
+    Name            SubnetID
     // Consensus implemented in the subnet
     Consensus hierarchical.ConsensusType
     // Arbitrary consensus parameters required to initialize
     // the consensus protocol (e.g. minimum number of validators).
-    // These parameters are consensus-specific.
+    // These parameters are consensus-specific and they may change
+    // for different implementations of the subnet actor.
     ConsensusParams *hierarchical.ConsensusParams
-    // Minimum amount of stake required from participant 
+    // Minimum amount of collateral required from participant 
     // to become a validator of the subnet.
-    MinValidatorStake   abi.TokenAmount
+    MinValidatorCollateral  TokenAmount
     // Checkpointing period used in the subnet. It determines
     // how often the subnet propagates and commits checkpoints in its
     // parent
-    CheckPeriod     abi.ChainEpoch
+    CheckPeriod     ChainEpoch
 }
 ```
 > TODO: There is an on-going revision of `ConstructParams` to include a way to provide arbitrary input arguments to a subnet.
+> Interface every subnet actor needs to implement. These functions
+> are triggered when a `message` is sent for their corresponding `methodNum`. 
+```go
+type SubnetActor interface{
+    // Initializes the state of the subnet actor and sets
+    // all its initial parameters.
+    //
+    // - methodNum: 1
+    // - allowed callers: any account.
+    // - impacted state: SubnetState for the subnet actor 
+    // is initialized.
+    // - side-effect message triggered: none
+    Constructor(ConstructParams)
+    
+    // It expects as `value` the amount of collateral the 
+    // source wants to stake to become part of the subnet.
+    // It triggers all check to determine if the source is eligible
+    // to become part of the subnet, and must propagate an `AddCollateral` message
+    // to the SCA to trigger the registration.
+    // 
+    // Join is also responsible to send a `Register` message to the SCA
+    // whenever the `CollateralThreshold` is reached. This function can also
+    // be used to AddCollateral for the subnet in the SCA. Additional
+    // checks for this operation may be included. As a result of the
+    // execution an `AddCollateral` message must be sent to the SCA 
+    // including the added collateral.
+    //
+    // - methodNum: 2
+    // - allowed callers: any account.
+    // - impacted state: increases `TotalCollateral` with the `value` provided
+    // in the message and updates the `Collateral` for the source of the message.
+    // It updates the `Status` of the subnet
+    // - side-effect message triggered:
+    //    - Register() to SCA `TotalCollateral > CollateralThreshold` and subnet 
+    //    not registered
+    //    - AddCollateral() to SCA including the amount of collateral included
+    //    in the value of the message.
+    // - invariants: 
+    //    - `Status` is `Active` iff `TotalColateral > CollateralThreshold`.
+    Join()
+    
+    // Called by participants that want to leave the subnet. It triggers all
+    // the checks to see if the source is eligible to leave the subnet.
+    // This function must propagate a `ReleaseCollateral` message to the SCA.
+    // The SCA will then release the corresponding stake of the validator in
+    // a message to the subnet actor so the subnet actor can trigger a message
+    // returning the funds to the leaving validtor.
+    //
+    // - methodNum: 3
+    // - allowed callers: any validator with some collateral in the subnet.
+    // - impacted state: reduces the `TotalCollateral` with the `value` provided
+    // in the message and updates the `Collateral` for the source of the message.
+    // It updates the `Status` of the subnet
+    // - side-effect message triggered:
+    //    - ReleaseCollateral() to SCA including the amount of collateral included
+    //    in the value of the message.
+    //    - Send() to the source of the message returning to the validator address
+    //    the corresponding amount of tokens determined by the leaving policy.
+    // - invariants: 
+    //    - `Status` is `Active` iff `TotalColateral > CollateralThreshold`.
+    Leave()
+    
+    // Kill performs all the sanity-checks required before completely
+    // killing (e.g. check that all validators have released
+    // their stake, or that there are no user-funds left in the subnet's
+    // state). It must propagate a `Kill` message to the SCA
+    // to unregister the subnet from the hierarchy, making it no longer
+    // discoverable.
+    //
+    // - methodNum: 4
+    // - allowed callers: any account
+    // - impacted state: It sets the `Status` of the subnet to killed.
+    // - side-effect message triggered:
+    //    - ReleaseCollateral() to SCA including the amount of collateral included
+    //    in the value of the message.
+    //    - Send() to the source of the message returning to the validator address
+    //    the corresponding amount of tokens determined by the leaving policy.
+    Kill()
+    
+    // SubmitCheckpoint is called by validators looking to submit a
+    // signed checkpoint for propagation. This function performs all the
+    // subnet-specific checks required for the final commitment of the 
+    // checkpoint in the SCA (e.g. in the reference implementation of
+    // the SubnetActor, SubmitCheckpoints waits for more than 2/3 of the validators
+    // to sign a valid checkpoint to propagate it to the SCA).
+    // 
+    // This function must propagate a `CommitChildCheckpoint` message to the SCA
+    // to commit the checkpoint.
+    //
+    // - methodNum: 5
+    // - allowed callers: any validator with some collateral in the subnet.
+    // - impacted state: It updates `CheckpointVotes` with the checkpoint and
+    //   address of the validator submitting the checkpoint. It also updates
+    //   `Checkpoints` if the signature policy to commit a checkpoint is fulfilled
+    //   (+2/3 votes in the reference implementation).
+    // - side-effect message triggered:
+    //    - CommitChildCheckpoint() to SCA including the checkpoint that fulfilled
+    //      the acceptance policy (e.g. +2/3 votes from validators)
+    SubmitCheckpoint(Checkpoint)
+    
+    // CheckEquivocation is called by the SCA to perform consensus-specific
+    // checks when an agreement equivocation is reported. It receives as input
+    // the chain of the last `finality_delay` blocks including the invalid
+    // blocks and the chain with what is supposed to be the valid block.
+    //
+    // - methodNum: 6
+    // - allowed callers: any account
+    // - impacted state: none
+    // - side-effect message triggered: none
+    CheckEquivocation(invalid []Block, valid []Block)
+}
+```
 
 ## Subnet Coordinator Actor (SCA)
 The main entity responsible for handling all the lifecycle of child subnets in a specific chain is the subnet coordinator actor (`SCA`). The `SCA` is a built-in actor that exposes the interface for subnets to interact with the hierarchical consensus protocol. This actor includes all the available functionalities related to subnets and their management. It also enforces all the security requirements, fund management, and cryptoeconomics of hierarchical consensus, as subnet actors are user-defined and can't be (fully) trusted. The `SCA` has a reserved address ID `f064`.
 
 The MVP implementation of this built-in actor can be found [here](https://github.com/adlrocha/builtin-actors/tree/master/actors/hierarchical_sca). The `SCA` exposes the following functions:
 
+##### SCA State
+> State of the SCA
+```go
+type SCAState struct {
+    // ID of the current network
+    NetworkName SubnetID
+    // Number of active subnets spawned from this one
+    TotalSubnets uint64
+    // Minimum stake required to create a new subnet
+    CollateralThreshold TokenAmount
+    // List of subnets
+    // The Cid points to a HAMT that keeps as keys the SubnetIDs of the
+    // child subnets registered, and as values the corresponding Subnet
+    // information.
+    Subnets Cid<HAMT<SubnetID, Subnet>>
+    // Checkpoint period in number of epochs for the subnet
+    CheckPeriod ChainEpoch
+    // Checkpoint templates in the SCA per epoch
+    // This CID points to a HAMT where the key is the epoch
+    // of the committed checkpoint, and the value the
+    // the corresponding checkpoint.
+    Checkpoints Cid<HAMT<ChainEpoch, Checkpoint>>
+    // CheckMsgMetaRegistry
+    // Stores information about the list of messages and child msgMetas being
+    // propagated in checkpoints to the top of the hierarchy.
+    // The CID points to a HAMT that tracks the CID of all the `CrossMsgs`
+    // propagated in checkpoints from the subnet
+    CheckMsgsRegistry Cid<HAMT<Cid, CrossMsgs>>
+    // Latest nonce of a cross message sent from subnet.
+    Nonce             uint64
+    // Nonce of bottom-up messages for msgMeta received from checkpoints.
+    // This nonce is used to mark with a nonce the metadata about cross-net
+    // messages received in checkpoints. This is used to order the
+    // bottom-up cross-net messages received through checkpoints.
+    BottomUpNonce     uint64
+    // Queue of bottom-up cross-net messages to be applied.
+    BottomUpMsgsMeta  Cid // AMT[CrossMsgs]
+    // AppliedNonces keep track of the next nonce of the message to be applied.
+    // This prevents potential replay attacks.
+    AppliedBottomUpNonce uint64
+    AppliedTopDownNonce  uint64
+    // Registry with all active atomic executions being orchestrated
+    // by the current subnet.
+    // The CID points to a HAMT that with keys the CIDs that uniequely
+    // identify active atomic execution, and value the corresponding
+    // information for the atomic execution.
+    AtomicExecRegistry Cid<HAMT<Cid, AtomicExec>> // HAMT[cid]AtomicExec
+}
+```
 
-##### SCA Functions
+> Struct with the information the SCA keeps for each child subnet
+```go
+// Subnet struct kept by the SCA with the information of
+// all of its children.
+type Subnet struct {
+    // ID of the Subnet
+    ID          SubnetID 
+    // Parent ID
+    ParentID    SubnetID
+    //  Collateral staked for this subnet.
+    Collateral       TokenAmount
+    // List of cross top-down messages committed for the subnet..
+    TopDownMsgs Cid // AMT[ltypes.Messages] 
+    // Latest nonce of cross message submitted to subnet.
+    Nonce      uint64
+    // Amount of native tokens injected in the subnet and
+    // that can be used freely in the subnet.
+    CircSupply TokenAmount 
+    // Status of the checkpoint (`Active`, `Inactive`, etc.)
+    Status     Status
+    // Latest checkpoint committed for the subnet.
+    // Kept for verification purposes.
+    PrevCheckpoint Checkpoint
+}
+```
+
+##### Checkpoints data structure
+Checkpoints are always identified though the [Content Identifier (CID)](https://github.com/multiformats/cid) of their `Data` (i.e. the payload of the checkpoint), and they can optionally include the corresponding signature from validators in the subnet chain (this can be the signature of an individual miner, a multi-signature, or a threshold signature, depending on the `SA` policy). The signature is never used for the computation of the CID of the checkpoint.
+
+> Checkpoints Data Structure
+```go
+
+// Checkpoints wrap the checkpoint data and
+// a field dedicated for the arbitrary signing policy
+// used by the subnet.
+type Checkpoint struct {
+    Data CheckpointData
+    Sig []byte
+}
+
+// Data included in checkpoints
+type CheckpointData struct {
+    // The SubnetID of the subnet that is committing the checkpoint. 
+    // The `SCA` checks that the right subnet actor is committing 
+    //the checkpoint for the source to prevent forged checkpoints. 
+    Source     SubnetID
+    // The proof of the state of the subnet that is to be 
+    // committed in the parent chain. In the reference 
+    // implementation of the subnet actor, we just include the 
+    // block for the epoch being committed, but this proof could 
+    // be a snapshot of a test, a ZK Proof, or any other piece of 
+    // information that subnets want to anchor in their parent's chain.
+    Proof     []byte
+    // Epoch of the checkpoint being committed. 
+    // The epoch must be a multiple of `CheckPeriod`.
+    Epoch     ChainEpoch
+    // Cid of the previous checkpoint committed for the subnet.
+    PrevCheck Cid<Checkpoint>
+    // Array with the aggregation of all the checkpoints committed
+    // from the subnet's children.
+    Children  []ChildCheck
+    // Metadata of all the messages being propagated in the checkpoint. 
+    // This metadata includes the source, destination 
+    // and `CID` of the messages.
+    CrossMsgs []CrossMsgMeta
+}
+
+// Package with all checkpoints committed in
+// the checkpoint window from children.
+type ChildCheck struct {
+    // Source of the checkpoints. ID of the child.
+    Source SubnetID
+    // List of cid of the checkpoints committed by
+    // the child in this checkpoint window.
+    // TODO: Checkpoints are being propagated without
+    // any aggregation. This will change soon and the spec
+    // will be updated accordingly
+    // (see https://github.com/filecoin-project/eudico/issues/217)
+    Checks []Cid<Checkpoint>
+}
+
+// Metadata pointing to the list of messages being
+// propagated in the checkpoint.
+type CrossMsgMeta struct {
+    // Source of the cross-net messages included in
+    // this metadata package
+    From    SubnetID
+    // Destination of the cross-net messages included.
+    To      SubnetID
+    // CID of the aggregation of all the messages being
+    // propagated. This CID is used to uniquely identify
+    // this package of messages.
+    MsgsCid Cid<CrossMsgs>
+    // Nonce of the crossMsgMeta. It is used for partial
+    // ordering and to prevent replay attacks.
+    Nonce   uint64
+    // Aggregation of all the native tokens being transacted
+    // in the included messages.
+    Value   TokenAmount
+}
+
+// CrossMsgs is the data structure used to persist in the
+// `CrossMsgsRegistry` the `Msgs` and `CrossMsgMeta` 
+// propagated in checkpoints
+type CrossMsgs struct {
+    // Raw msgs from the subnet
+    Msgs  []Message 
+    // Metas propagated from child subnets and included
+    // in a checkpoint
+    Metas []CrossMsgMeta 
+}
+
+// MetaTag is a convenient struct
+// used to compute the CID of the MsgMeta
+type MetaTag struct {
+    MsgsCid  Cid<[]Message>
+    MetasCid Cid<[]CrossMsgMeta>
+}
+```
+Every `CrossMsgMeta` gets updated with every new checkpoint on its way up the hierarchy aggregating messages with the same destination building a tree of linked message digests with different sources but the same destination. Thus, every subnet only sees the message aggregation of its children (i.e. the digest of all the subnet's children's CrossMsgMeta list). Any subnet looking to know the specific messages behind the `CID` of a `CrossMsgMeta` -- which will be the case for the destination subnet of the messages, see [cross-net messages](#cross-net-messages) -- only needs to send a query message leveraging the [Subnet Content Resolution Protocol](#Subnet-Content-Resolution-Protocol "Subnet Content Resolution Protocol") for the cross-net message `CID` to the corresponding pubsub topic of the source subnet.
+
+> TODO: Add a figure of how `CrossMsgMeta` are aggregated?
+
+##### SCA Functions and parameters
+> Parameters and data types for SCA
+```go
+// Parameters called when initializing the SCA in genesis.
+type ConstructParams struct {
+    // ID of the current network.
+    NetworkName SubnetID 
+    // Checkpoint period used in the subnet.
+    CheckPeriod ChainEpoch
+}
+
+// Parameters of SendCross() with information about the
+// cross-message to be sent.
+type CrossMsgParams struct {
+    // Message to be sent as a cross-message.
+    Msg Message
+    // Destination subnet for the cross-message.
+    Destination SubnetID
+}
+
+// Parameters to initialize an atomic execution.
+type AtomicExecParams struct {
+    // See [Atomic Execution Protocol](#Atomic-Execution-Protocol] 
+    // section.
+    //...
+}
+
+// Parameters to return the result of an atomic execution.
+type SubmitExecParams struct {
+    // See [Atomic Execution Protocol](#Atomic-Execution-Protocol] 
+    // section.
+    //...
+}
+```
+
 > Functions of the SCA. These functions are triggered when a `message` is sent for their corresponding `methodNum`.
 ```go
 type SCA interface{
     // Initializes the state of the SCA and sets
     // all its initial parameters.
-    // (methodNum = 1)
+    //
+    // - methodNum: 1
+    // - allowed callers: system actor address (SCA is a builtin)
+    //   actor and initialized in genesis.
+    // - impacted state: it initializes the state of the SCA.
+    // - side-effect message triggered: none
     Constructor(ConstructParams)
     
     // Register expects as source the address of the subnet actor of
@@ -267,49 +540,111 @@ type SCA interface{
     // This functions activates the subnet. From then on, other
     // subnets in the system are allowed to interact with it and the
     // subnet can start commtting its checkpoints.
-    // (methodNum = 2)
+    //
+    // - methodNum: 2
+    // - allowed callers: subnet actor addresses.
+    // - impacted state: It updates `TotalSubnets` and initializes
+    // a new `Active` subnet in the `Subnets` HAMT.
+    // - side-effect message triggered: none
     Register()
     
     // AddCollateral expects as source the address of the subnet actor
     // for which the collateral wants to be added.  Its `value` should
     // include the amount of collateral to be added for the subnet.
-    // (methodNum = 3)
+    //
+    // - methodNum: 3
+    // - allowed callers: subnet actor addresses.
+    // - impacted state: Updates the value of `Collateral` for the
+    //   subnet that called the method.
+    // - side-effect message triggered: none
     AddCollateral()
     
     // ReleaseCollateral expects as source the address of the subnet actor
     // for which the collateral should be released. It triggers a transfer message
     // to the subnet actor returning the corresponding collateral. 
-    // (methodNum = 4)
-    ReleaseCollateral(value abi.TokenAmount)
+    //
+    // - methodNum: 4
+    // - allowed callers: subnet actor addresses.
+    // - impacted state: Updates the value of `Collateral` for the
+    //   subnet that initiated the message call.
+    // - side-effect message triggered: 
+    //    - Send() message to the subnet actor that called the method including
+    //    the amount of collateral released in its `value`
+    ReleaseCollateral(value TokenAmount)
     
     // Kill expects as source the address of the subnet actor to be killed.
     // This function can only be executed if no collateral or circulating
     // supply is left for the subnet (i.e. balance = 0).
-    // (methodNum = 5)
+    //
+    // - methodNum: 5
+    // - allowed callers: subnet actor addresses.
+    // - impacted state: Removes the subnet information for the subnet that 
+    //   called the method from the `Subnets` HAMT, and decrements `TotalSubnets`.
+    // - side-effect message triggered: none
+    // - invariants: The total balance of native tokens of a killed subnet should be zero·
     Kill()
     
     // CommitChildCheckpoint expects as source the address of the subnet actor for which the
     // checkpoint is being committed. The function performs some basic checks
     // to ensure that checkpoint is valid and it persist it in the SCA state.
-    // (methodNum = 6)
+    // 
+    // - methodNum: 6
+    // - allowed callers: subnet actor addresses.
+    // - impacted state: Updates `Checkpoint` including in the checkpoint template 
+    //  for the current window the CID of the child checkpoint committed, and any outstanding
+    //  `CrossMsgMeta` to be propagated further. It updates
+    //  `Subnet.PrevCheckpoint` for the subnet calling the method. It adds new top-down or
+    //  bottom-up messages to `Subnet.TopDownMsgs` and `BottomUpMsgMeta`, respectively.
+    // - side-effect message triggered: none
+    // - invariants: 
+    //   - The checkpoint is only accepted if `Subnet.PrevCheckpoint` and 
+    //    `Checkpoint.Epoch > Subnet.PreviousCheckpoint.Epoch` and `Subnet.Status = Active`
+    //   - For bottom-up messages to be propagated, `sum(CrossMsgsMeta.Value) < Subnet.CircSupply`.
     CommitChildCheckpoint(ch Checkpoint)
     
     // Fund can be called by any user in a subnet and it injects 
     // the `value` of native tokens included in the message to the source's address in
     // the child subnet given as argument.
-    // (methodNum = 7)
-    Fund(address.SubnetID)
+    // 
+    // - methodNum: 7
+    // - allowed callers: any account
+    // - impacted state: Append the fund message to the `TopDownMsgs` of the Subnet. Update
+    //   of `CircSupply` for the subnet specified as parameter in the method.
+    // - side-effect message triggered: 
+    //   - ResolvePubKey() message to the address of account actor that called this method. 
+    Fund(SubnetID)
     
     // Release can be called by any user in a subnet to release the amount 
     // of native tokens included in `value` from its own address in the
     // subnet to the address in the parent. 
-    // (methodNum = 8)
+    //
+    // - methodNum: 8
+    // - allowed callers: any account
+    // - impacted state: Update `Checkpoint` to include in its `CrossMsgMeta` a 
+    //  `CrossMsgs` with this new release message and an updated `Value`. 
+    //  It also triggers an update of `CheckMsgsRegistry` with the updated `CrossMsgs`.
+    // - side-effect message triggered: 
+    //   - ResolvePubKey() message to the address of account actor that called this method. 
+    //   - Send() message to the `BURNT_ACTOR` address with the `Value` included in the message
+    //    to be burnt.
     Release()
     
     // SendCross can be called by any user in the subnet to send 
     // an arbitrary cross-net message to any other subnet in
     // the hierarchy.
-    // (methodNum = 9)
+    //
+    // - methodNum: 9
+    // - allowed callers: any account
+    // - impacted state: 
+    //  - If Bottom-up message: update `Checkpoint` to include in its `CrossMsgMeta` a 
+    //  `CrossMsgs` with this new release message and an updated `Value`. 
+    //  It also triggers an update of `CheckMsgsRegistry` with the updated `CrossMsgs`.
+    //  - If top-down message: Append the message to the `TopDownMsgs` of the next child subnet
+    //  in the path. Update of `CircSupply` for the subnet specified as parameter in the method.
+    // - side-effect message triggered: 
+    //   - ResolvePubKey() message to the address of account actor that called this method. 
+    //   - If bottom-up message: Send() message to the `BURNT_ACTOR` address with the 
+    //  `Value` included in the message to be burnt.
     SendCross(msg CrossMsgParams)
     
     // ApplyMessage can only be called as an `ImplicitMessage` by
@@ -321,19 +656,51 @@ type SCA interface{
     // - It determines the type of cross-net message
     // - It executes the message and trigger the corresponding state changes.
     // - And it updates the latest nonce applied for the type of message. 
-    // (methodNum = 10)
+    // 
+    // - methodNum: 10
+    // - allowed callers: system actor address (executed implicitly)
+    // - impacted state: 
+    //   - If bottom-up message: Increment `AppliedBottomUpNonce` and update
+    //     `TopDownMsgs` of the next child subnet in the path 
+    //     if the message need to be propagated further down.
+    //   - If top-down message: Increment `AppliedBottomUpNonce` and update
+    //     `TopDownMsgs` of the next child subnet in the path 
+    // - side-effect message triggered: 
+    //   - If message directed to current network: Send() the message being executed
+    //   to the right address.
+    //   - If top-down message: SubnetMint() to reward actor to mint new funds to
+    //    be sent to the right address when executed.
+    // - invariants: 
+    //   - A top-down message can only be executed if its nonce is `AppliedTopDownNonce+1`.
+    //   - A bottom-up message can only be executed if its nonce is `AppliedBottomUpNonce ||
+    //     AppliedBottomUpNonce+1`
+    //    value
     ApplyMessage(msg CrossMsgParams)
     
     // InitAtomicExec can be called by users to initiate an
     // atomic execution with some other subnet.
-    // (methodNum = 11)
+    // 
+    // - methodNum: 11
+    // - allowed callers: any account
+    // - impacted state: Update `AtomicExecRegistry` with the new execution
+    // - side-effect message triggered: 
     InitAtomicExec(params AtomicExecParams)
     
     // SubmitAtomicExec has to be called by all participants in an
     // atomic execution to submit their results and trigger the 
     // propagation of the output (or the abortion) of the execution
     // to the corresponding subnets.
-    // (methodNum = 12)
+    // 
+    // - methodNum: 12
+    // - allowed callers: any account involved in the atomic execution
+    // - impacted state: Update `AtomicExecRegistry` with the new
+    //  output provided, and any required update to the `ExecState`.
+    //  If the execution succeeds or is aborted a new message is
+    //  appended to the `TopDownMsgs` of all the subnets involved.
+    // - side-effect message triggered: none
+    // - invariants:
+    //   - All outputs should match and lead to the same CID for the
+    //   execution to succeed and it shouldn't have been aborted.
     SubmitAtomicExec(submit SubmitExecParams)
     
     // ReportMisbehavior is used to report a misbehavior from one
@@ -342,7 +709,11 @@ type SCA interface{
     // `CheckEquivocation` method of the correponding subnet actor
     // to perform checks over the proof of misbehavior.
     // If the proof succeeds, the collateral for the subnet is slashed.
-    // (methodNum = 13)
+    //
+    // - methodNum: 13
+    // - allowed callers: any account
+    // - impacted state: 
+    // - side-effect message triggered: 
     ReportMisbehavior(SubnetID, invalid []Block, valid []Block)
     
     // Save can be used by any user of the subnet to trigger the persistence
@@ -357,75 +728,12 @@ type SCA interface{
     // snapshot.
     // NOTE2: We are considering the implementation of a protocol that performs
     // the storage of incremental snapshots.
-    // (methodNum = 14)
+    //
+    // - methodNum: 13
+    // - allowed callers: any account
+    // - impacted state: 
+    // - side-effect message triggered: 
     Save() (Cid, URI)
-```
-
-> All function parameters from the above snippet of code are fully specified in the detailed description of the different protocols.
-
-##### SCA State
-> State of the SCA
-```go
-type SCAState struct {
-    // ID of the current network
-    NetworkName address.SubnetID
-    // Number of active subnets spawned from this one
-    TotalSubnets uint64
-    // Minimum stake required to create a new subnet
-    CollateralThreshold abi.TokenAmount
-    // List of subnets
-    Subnets cid.Cid // HAMT[cid.Cid]Subnet
-    // Checkpoint period in number of epochs for the subnet
-    CheckPeriod abi.ChainEpoch
-    // Checkpoints committed in SCA
-    Checkpoints cid.Cid // HAMT[epoch]Checkpoint
-    // CheckMsgMetaRegistry
-    // Stores information about the list of messages and child msgMetas being
-    // propagated in checkpoints to the top of the hierarchy.
-    CheckMsgsRegistry cid.Cid // HAMT[cid]CrossMsgs
-    // Latest nonce of a cross message sent from subnet.
-    Nonce             uint64  
-    // Nonce of bottom-up messages for msgMeta received from checkpoints.
-    // This nonce is used to mark with a nonce the metadata about cross-net
-    // messages received in checkpoints. This is used to order the
-    // bottom-up cross-net messages received through checkpoints.
-    BottomUpNonce     uint64
-    // Queue of bottom-up cross-net messages to be applied.
-    BottomUpMsgsMeta  cid.Cid // AMT[schema.CrossMsgs]
-    // AppliedNonces keep track of the next nonce of the message to be applied.
-    // This prevents potential replay attacks.
-    AppliedBottomUpNonce uint64
-    AppliedTopDownNonce  uint64
-    // Registry with all active atomic executions being orchestrated
-    // by the current subnet.
-    AtomicExecRegistry cid.Cid // HAMT[cid]AtomicExec
-}
-```
-
-> Struct with the information the SCA keeps for each child subnet
-```go
-// Subnet struct kept by the SCA with the information of
-// all of its children.
-type Subnet struct {
-    // ID of the Subnet
-    ID          address.SubnetID 
-    // Parent ID
-    ParentID    address.SubnetID
-    //  Collateral staked for this subnet.
-    Collateral       abi.TokenAmount
-    // List of cross top-down messages committed for the subnet..
-    TopDownMsgs cid.Cid // AMT[ltypes.Messages] 
-    // Latest nonce of cross message submitted to subnet.
-    Nonce      uint64
-    // Amount of native tokens injected in the subnet and
-    // that can be used freely in the subnet.
-    CircSupply abi.TokenAmount 
-    // Status of the checkpoint (`Active`, `Inactive`, etc.)
-    Status     Status
-    // Latest checkpoint committed for the subnet.
-    // Kept for verification purposes.
-    PrevCheckpoint schema.Checkpoint
-}
 ```
 
 ## Consensus Interface
@@ -586,81 +894,6 @@ As shown on the next figure, the checkpointing protocol has two distinct stages:
 
 ![](https://hackmd.io/_uploads/HkAodIuFc.png)
 
-### Checkpoints data structure
-Checkpoints are always identified though the [Content Identifier (CID)](https://github.com/multiformats/cid) of their `Data` (i.e. the payload of the checkpoint), and they can optionally include the corresponding signature from validators in the subnet chain (this can be the signature of an individual miner, a multi-signature, or a threshold signature, depending on the `SA` policy). The signature is never used for the computation of the CID of the checkpoint.
-
-> Checkpoints Data Structure
-```go
-
-// Checkpoints wrap the checkpoint data and
-// a field dedicated for the arbitrary signing policy
-// used by the subnet.
-type Checkpoint struct {
-    Data CheckpointData
-    Sig []byte
-}
-
-// Data included in checkpoints
-type CheckpointData struct {
-    // The SubnetID of the subnet that is committing the checkpoint. 
-    // The `SCA` checks that the right subnet actor is committing 
-    //the checkpoint for the source to prevent forged checkpoints. 
-    Source     address.SubnetID
-    // The proof of the state of the subnet that is to be 
-    // committed in the parent chain. In the reference 
-    // implementation of the subnet actor, we just include the 
-    // tipset for the epoch being committed, but this proof could 
-    // be a snapshot of a test, a ZK Proof, or any other piece of 
-    // information that subnets want to anchor in their parent's chain.
-    Proof     []byte
-    // Epoch of the checkpoint being committed. 
-    // The epoch must be a multiple of `CheckPeriod`.
-    Epoch     abi.ChainEpoch
-    // Cid of the previous checkpoint committed for the subnet.
-    PrevCheck cid.Cid
-    // Array with the aggregation of all the checkpoints committed
-    // from the subnet's children.
-    Children  []ChildCheck
-    // Metadata of all the messages being propagated in the checkpoint. 
-    // This metadata includes the source, destination 
-    // and `CID` of the messages.  
-    CrossMsgs []CrossMsgMeta
-}
-
-// Metadata pointing to the list of messages being
-// propagated in the checkpoint.
-type CrossMsgMeta struct {
-    // Source of the cross-net messages included in
-    // this metadata package
-    From    address.SubnetID
-    // Destination of the cross-net messages included.
-    To      address.SubnetID
-    // CID of the aggregation of all the messages being
-    // propagated. This CID is used to uniquely identify
-    // this package of messages.
-    MsgsCid cid.Cid
-    // Nonce of the crossMsgMeta. It is used for partial
-    // ordering and to prevent replay attacks.
-    Nonce   uint64
-    // Aggregation of all the native tokens being transacted
-    // in the included messages.
-    Value   abi.TokenAmount
-}
-
-// Package with all checkpoints committed in
-// the checkpoint window from children.
-type ChildCheck struct {
-    // Source of the checkpoints. ID of the child.
-    Source address.SubnetID
-    // List of cid of the checkpoints committed by
-    // the child in this checkpoint window.
-    Checks []cid.Cid
-}
-
-```
-Every `CrossMsgMeta` gets updated with every new checkpoint on its way up the hierarchy aggregating messages with the same destination building a tree of linked message digests with different sources but the same destination. Thus, every subnet only sees the message aggregation of its children (i.e. the digest of all the subnet's children's CrossMsgMeta list). Any subnet looking to know the specific messages behind the `CID` of a `CrossMsgMeta` -- which will be the case for the destination subnet of the messages, see [cross-net messages](#cross-net-messages) -- only needs to send a query message leveraging the [Subnet Content Resolution Protocol](#Subnet-Content-Resolution-Protocol "Subnet Content Resolution Protocol") for the cross-net message `CID` to the corresponding pubsub topic of the source subnet.
-
-> TODO: Add a figure of how `CrossMsgMeta` are aggregated?
 
 ## Cross-net messages
 Users in a subnet interact with other subnets through cross-net transactions (or messages). The propagation of a cross-net transaction may slightly differ depending on the location of subnets in the hierarchy (i.e. if moving up or down the hierarchy). In particular, we distinguish the following type of cross-net messages: 
@@ -718,54 +951,12 @@ Whenever a new bottom-up message is triggered in a subnet, its `SCA`:
     - In these updates, also the total amount of native tokens included in the messages of the `CrossMsgMeta` is updated in the `Value` field.
 - Finally, when the signing window for the checkpoint closes, the checkpoint is propagated including a link to the cross-net message in the `CrossMsgMeta` of the checkpoint. 
 
-> Bottom-up messages and checkpoint propagation data structures
-```go
-
-// Metadata pointing to the list of messages being
-// propagated in the checkpoint.
-type CrossMsgMeta struct {
-    // Source of the cross-net messages included in
-    // this metadata package
-    From    address.SubnetID
-    // Destination of the cross-net messages included.
-    To      address.SubnetID
-    // CID of the aggregation of all the messages being
-    // propagated. This CID is used to uniquely identify
-    // this package of messages.
-    MsgsCid cid.Cid
-    // Nonce of the crossMsgMeta. It is used for partial
-    // ordering and to prevent replay attacks.
-    Nonce   uint64
-    // Aggregation of all the native tokens being transacted
-    // in the included messages.
-    Value   abi.TokenAmount
-}
-
-// CrossMsgs is the data structure used to persist in the
-// `CrossMsgsRegistry` the `Msgs` and `CrossMsgMeta` 
-// propagated in checkpoints
-type CrossMsgs struct {
-    // Raw msgs from the subnet
-    Msgs  []Message   
-    // Metas propagated from child subnets
-    // (full definition of CrossMsgMeta in cross-net message
-    // section)
-    Metas []CrossMsgMeta 
-}
-
-// MetaTag is a convenient struct
-// used to compute the CID of the MsgMeta
-type MetaTag struct {
-    MsgsCid  cid.Cid
-    MetasCid cid.Cid
-}
-```
 
 #### Executing bottom-up messages
 When a new checkpoint for a child subnet is committed in a network, the `SCA` checks if it includes any `CrossMsgMeta` before storing it in its state. If this is the case, it means that there are pending cross-msgs to be executed or propagated further in the hierarchy. For every `CrossMsgMeta` in the checkpoint, the `SCA`:
 - Checks if the `Value` included in the `CrossMsgMeta` for the source subnet is below the total `CircSupply` of native tokens for the subnet. If the `Value > CircSupply`, `SCA` rejects the cross-msgs included in the `CrossMsgMeta` due to a violation of the firewall requirement. If `Value <= CircSupply` then the `CrossMsgMeta` is accepted, and `CircSupply` is decremented by `Value`.
 - Checks if the destination of the `CrossMsgMeta` is the current subnet; a subnet higher up in the hierarchy; or a subnet that is lower in the hierarchy.
-    - If the `CrossMsgMeta` points to the current subnet or to some other subnet down the current branch of the hierarchy in its `To`, the `CrossMsgMeta` is stored with the subsequent `BottomUpNonce` in `BottomUpMsgsMeta` to notify the `CrossMsgPool` that the cross-msgs inside the `CrossMsgMeta` need to be conveniently executed (or routed down).
+    - If the `CrossMsgMeta` points to the current subnet or to some other subnet down the current branch of the hierarchy in its `To`, the `CrossMsgMeta` is stored with the subsequent `BottomUpNonce` in `BottomUpMsgsMeta` to notify the `CrossMsgPool` that the cross-msgs inside the `CrossMsgMeta` need to be conveniently executed (or routed down) by implicitly executing a message to the `ApplyMsg` method of the `SCA`.
     - If the `CrossMsgsMeta` points to a subnet that needs to be routed up, `SCA` executes the same logic as when a new bottom-up cross-msg is created in the subnet, but appending the `CrossMsgsMeta` into the `Meta` field of `CrossMsgs`. The corresponding `CrossMsgsMeta` of the current checkpoint is created or updated to include this meta for it to be propagated further up in the next checkpoint. Thus, the `CID` of the new `CrossMsgMeta` for the parent includes a single `CID` that already aggregates a link to the `CrossMsgMeta` of the child with cross-net messages that need to go even upper in the hierarchy.
 
 Validators' `CrossMsgPool`s also listen for new `BottomUpMsgsMeta` being included in their subnet SCA. When a new `CrossMsgsMeta` appears in `BottomUpMsgsMeta` (after the committment of a checkpoint), the `CrossMsgPool` checks if `CrossMsgsMeta.Nonce > AppliedBottomUpNonce` to see if it includes cross-msgs that haven't been executed yet. If this is the case, the `CrossMsgPool`:
@@ -786,7 +977,7 @@ If at any point the propagation or execution of a cross-msg fails (either becaus
 > TODO: Come up with error codes for message failures and how to propagate them to the source. Only the source will be notified.
 
 ### Minting and burning native tokens in subnets
-Native tokens are injected into the circulating supply of a subnet by applying top-down messages. When executed, these messages lock the number of tokens included in the `value` of the message in the `SCA` of the parent and trigger the minting of new tokens in the subnet. To mint new tokens in the subnet, we include a new `SubnetMint` method with `methodNum=5` to the `RewardActor`. `SubnetMint` can only be called by the `SCA` in a subnet through `ApplyMsg()` method when executing a message. `SubnetMint` funds the `SCA` with enough minted native tokens to provide the destination address with its corresponding subnet tokens (see [sample implementation](https://github.com/filecoin-project/eudico/blob/bb52565105f7fe716463b1e09dad7492569089f5/chain/consensus/actors/reward/reward_actor.go#L94)).
+Native tokens are injected into the circulating supply of a subnet by applying top-down messages. When executed, these messages lock the number of tokens included in the `value` of the message in the `SCA` of the parent and trigger the minting of new tokens in the subnet. To mint new tokens in the subnet, we include a new `SubnetMint` method with `methodNum=5` to the `RewardActor`. `SubnetMint` can only be called by the `SCA` in a subnet through `ApplyMsg()` method when executing a message. `SubnetMint` funds the `SCA` with enough minted native tokens to provide the destination address with its corresponding subnet tokens (see [sample implementation](https://github.com/adlrocha/builtin-actors/blob/9d3dd0b0638e9974de3059e81c588ec7338bab53/actors/reward/src/lib.rs#L237), `ExternalFunding` is renamed to `SubnetMint` in the []latest implementations](https://github.com/adlrocha/builtin-actors/issues/12)).
 
 Validators in subnets are exclusively rewarded in native-tokens through message fees, so the balance of the `RewardActor` in subnets is only used to increase the circulating supply in a subnet by order of the `SCA`. For new native tokens to be minted in a subnet, the same amount of tokens need to have been locked in the `SCA` of the parent.
 
@@ -801,7 +992,7 @@ For scalability reasons, when the destination subnet receives a new checkpoint w
 Every subnet runs a specific pubsub topic dedicated to exchange Subnet Content Resolution messages. This topic always has the following ID: `/fil/resolver/<subnet_ID>`. So when a subnet receives a `CrossMsgMeta`, it only needs to tailor a query to the topic of the source subnet of the `CrossMsgMeta` for the `CID` of the messages included in it to resolve the messages.
 
 The subnet content resolution protocol can be extended to resolve arbitrary content from the state of a subnet. Currently, the protocol includes handlers for the resolution by `CID` of the following objects.
-- `CrossMsgMeta`: Digest of a
+- `CrossMsgs`: Set of messages being propagated in a checkpoint from a subnet and included in a checkpoint through a `CrossMsgMeta`.
 - `LockedStates`: The input state locked for an atomic execution (see [Atomic Execution Protocol](#Atomic-Execution-Protocol "Atomic Execution Protocol"))
 - `Checkpoints`: Committed checkpoints of a subnet in the parent `SCA`
 
@@ -849,11 +1040,11 @@ type MsgType enum (
 ```go
 type ResolveMsg struct {
 	// From subnet
-	From address.SubnetID
+	From SubnetID
 	// Message type being propagated
 	Type MsgType
 	// Cid of the content
-	Cid cid.Cid
+	Cid Cid<Type>
 	// MsgMeta being propagated (if any)
 	CrossMsgs CrossMsgs
 	// Checkpoint being propagated (if any)
@@ -908,17 +1099,17 @@ type LockableActor interface {
     runtime.VMActor
     // Lock defines how to lock the state in the actor.
     // (methodNum = 2)
-    Lock(rt runtime.Runtime, params *LockParams) cid.Cid
+    Lock(rt runtime.Runtime, params *LockParams) Cid<LockedState>
     // Merge takes external locked state and merges it to 
     // the current actors state.
     // (methodNum = 3)
-    Merge(rt runtime.Runtime, params *MergeParams) *abi.EmptyValue
+    Merge(rt runtime.Runtime, params *MergeParams)
     // Finalize merges the output of an execution and unlocks the state.
     // (methodNum = 4)
-    Finalize(rt runtime.Runtime, params *UnlockParams) *abi.EmptyValue
+    Finalize(rt runtime.Runtime, params *UnlockParams)
     // Abort unlocks the state and aborts the atomic execution.
     // (methodNum = 5)
-    Abort(rt runtime.Runtime, params *LockParams) *abi.EmptyValue
+    Abort(rt runtime.Runtime, params *LockParams)
     // StateInstance returns an instance of the lockable actor state
     StateInstance() LockableActorState
 }
@@ -929,7 +1120,7 @@ type LockableActor interface {
 type LockableActorState interface {
 	cbg.CBORUnmarshaler
 	// LockedMapCid returns the cid of the root for the locked map
-	LockedMapCid() cid.Cid
+	LockedMapCid() Cid<HAMT<Cid, LockedState>>
 	// Output returns locked output from the state.
 	Output(*LockParams) *LockedState
 }
@@ -963,7 +1154,7 @@ type LockedState struct {
 /// Methods of LockedState
 ///////////////////////////
 // Returns the CID for the locked state
-Cid() cid.Cid
+Cid() Cid<LockedState>
 // Sets the state for a lockedState object container
 SetState(ls LockableState) error
 // Locks the state
@@ -983,7 +1174,7 @@ UnwrapLockableState(s *LockedState, out LockableState) error
 ```go
 // LockParams wraps serialized params from a message with the requested methodnum.
 type LockParams struct {
-    Method abi.MethodNum
+    Method MethodNum
     Params []byte
 }
 
@@ -1037,7 +1228,7 @@ type AtomicExec struct {
 }
 
 type SubmitExecParams struct {
-	Cid    cid.Cid 
+	Cid    Cid<LockedState>
 	Abort  bool
 	Output atomic.LockedState
 }
@@ -1053,7 +1244,7 @@ type SubmitOutput struct {
 // off-chain execution stage.
 type AtomicExecParams struct {
 	Msgs   []types.Message
-	Inputs map[cid.Cid]LockedState
+	Inputs map[Cid]LockedState
 }
 ```
 
