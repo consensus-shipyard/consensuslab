@@ -1,4 +1,4 @@
-Hierarchical Consensus Spec and FIPs
+
 ===
 
 > This document includes the latest version of the hierarchical consensus spec along with the relevant FIPs to be proposed to the Filecoin community.
@@ -124,7 +124,7 @@ The subnet actor is the public contract accessible by users in the system to det
 #### Subnet actor interface
 We provide a reference implementation of the subnet actor interface, but users are permitted to implement custom governing policies and mechanics that better suit their needs (e.g. request dynamic collateral for validators, add a leaving fee coefficient to penalize validators leaving the subnet before some time frame, require a minimum number of validators, include latency limits, etc.).
 
-##### SubnetActor state
+#### SubnetActor state
 > Example of state of the subnet actor from the reference implementation.
 ```go
 type SubnetState struct {
@@ -170,7 +170,7 @@ type SubnetState struct {
     MinValidators uint64
 }
 ```
-##### Constructor Parameters
+#### Constructor Parameters
 > Constructor parameters for the reference implementation of the subnet actor.
 ```go
 type ConstructParams struct {
@@ -313,7 +313,7 @@ The main entity responsible for handling all the lifecycle of child subnets in a
 
 The MVP implementation of this built-in actor can be found [here](https://github.com/adlrocha/builtin-actors/tree/master/actors/hierarchical_sca). The `SCA` exposes the following functions:
 
-##### SCA State
+#### SCA State
 > State of the SCA
 ```go
 type SCAState struct {
@@ -389,7 +389,7 @@ type Subnet struct {
 }
 ```
 
-##### Checkpoints data structure
+#### Checkpoints data structure
 Checkpoints are always identified though the [Content Identifier (CID)](https://github.com/multiformats/cid) of their `Data` (i.e. the payload of the checkpoint), and they can optionally include the corresponding signature from validators in the subnet chain (this can be the signature of an individual miner, a multi-signature, or a threshold signature, depending on the `SA` policy). The signature is never used for the computation of the CID of the checkpoint.
 
 > Checkpoints Data Structure
@@ -486,7 +486,7 @@ Every `CrossMsgMeta` gets updated with every new checkpoint on its way up the hi
 
 > TODO: Add a figure of how `CrossMsgMeta` are aggregated?
 
-##### SCA Functions and parameters
+#### SCA Functions and parameters
 > Parameters and data types for SCA
 ```go
 // Parameters called when initializing the SCA in genesis.
