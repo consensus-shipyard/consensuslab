@@ -708,7 +708,7 @@ When a new cross-net message to a subnet is included in the `TopDownMsgs` in the
 ### Bottom-up messages
 
 #### Including messages in `CrossMsgMeta`
-Bottom-up messages are created by sending a message to the `Release()` or `SendCross()` methods of the source subnet's `SCA`. `Release()` sends a cross-net message to the parent of the subnet releasing some funds from the subnet, while `SendCross()` sends an arbitrary message and is routed as a bottom-up message when it includes in its `CrossMsgsParams` a destination subnet in the upper layers of the hierarchy or with a common parent higher in the hierarchy. Bottom-up messages are propagated inside checkpoints. At every checkpoint period, the `SCA` collects and aggregates all `CrossMsgMeta` from bottom-up transactions originated in the subnet, as well as all the `CrossMsgMeta`. All these `CrossMsgMeta`are included in the next checkpoint for their propagation up the hierarchy.
+Bottom-up messages are created by sending a message to the `Release()` or `SendCross()` methods of the source subnet's `SCA`. `Release()` sends a cross-net message to the parent of the subnet releasing some funds from the subnet, while `SendCross()` sends an arbitrary message and is routed as a bottom-up message when it includes in its `CrossMsgParams` a destination subnet in the upper layers of the hierarchy or with a common parent higher in the hierarchy. Bottom-up messages are propagated inside checkpoints. At every checkpoint period, the `SCA` collects and aggregates all `CrossMsgMeta` from bottom-up transactions originated in the subnet, as well as all the `CrossMsgMeta`. All these `CrossMsgMeta`are included in the next checkpoint for their propagation up the hierarchy.
 
 Whenever a new bottom-up message is triggered in a subnet, its `SCA`:
 - Burns the amount of native tokens included in the `value` of the message in the subnet.
@@ -754,7 +754,7 @@ type CrossMsgs struct {
 }
 
 // MetaTag is a convenient struct
-// used to compute the Cid of the MsgMeta
+// used to compute the CID of the MsgMeta
 type MetaTag struct {
     MsgsCid  cid.Cid
     MetasCid cid.Cid
@@ -773,7 +773,7 @@ Validators' `CrossMsgPool`s also listen for new `BottomUpMsgsMeta` being include
 - Gets `CrossMsgMeta.Cid` and makes a request to the subnet content resolution protocol to resolve the `CrossMsgs` behind that `CrossMsgMeta`. These requests are directed to the subnet in `Source` and they resolve the CID from the subnet's `CrossMsgsRegistry`. 
     - If the resolved `CrossMsgs` only includes elements in the `Msgs` field, they can be directly proposed in the next block for their execution.
     - If this is not the case, and `CrossMsgs` includes in its `Meta` field `CrossMsgMetas` from its children, then these `CrossMsgsMeta` need to be resolved recursively until all the `CrossMsgsMeta` have been successfully resolved to their underlying messages.
-- Then, as it happened for top-down messages, when the `CrossMsgPool` has all the bottom-up messages to be applied, it waits for a `FinailityThreshold` before proposing the messages to be sure that the checkpoint commitment can be considered final, and all the resolved cross-net messages are proposed for their inclusion and subsequent execution. 
+- Then, as it happened for top-down messages, when the `CrossMsgPool` has all the bottom-up messages to be applied, it waits for a `FinalityThreshold` before proposing the messages to be sure that the checkpoint commitment can be considered final, and all the resolved cross-net messages are proposed for their inclusion and subsequent execution. 
 
 ![](https://hackmd.io/_uploads/Bkrzj2uF5.png)
 
@@ -786,7 +786,7 @@ If at any point the propagation or execution of a cross-msg fails (either becaus
 > TODO: Come up with error codes for message failures and how to propagate them to the source. Only the source will be notified.
 
 ### Minting and burning native tokens in subnets
-Native tokens are injected to the circulating supply of a subnet by applying top-down messages. These messages lock the amount of tokens included in the `value` of the message in the `SCA` of the parent, and they trigger the minting of new tokens in the subnet when they are executed. To mint new tokens in the subnet, we include a new `SubnetMint` method with `methodNum=5` to the `RewardActor`. `SubnetMint` can only be called by the `SCA` in a subnet through `ApplyMsg()` method when executing a message. `SubnetMint` funds the `SCA` with enough minted native tokens to provide the destination address with its corresponding subnet tokens (see [sample implementation](https://github.com/filecoin-project/eudico/blob/bb52565105f7fe716463b1e09dad7492569089f5/chain/consensus/actors/reward/reward_actor.go#L94)).
+Native tokens are injected into the circulating supply of a subnet by applying top-down messages. When executed, these messages lock the number of tokens included in the `value` of the message in the `SCA` of the parent and trigger the minting of new tokens in the subnet. To mint new tokens in the subnet, we include a new `SubnetMint` method with `methodNum=5` to the `RewardActor`. `SubnetMint` can only be called by the `SCA` in a subnet through `ApplyMsg()` method when executing a message. `SubnetMint` funds the `SCA` with enough minted native tokens to provide the destination address with its corresponding subnet tokens (see [sample implementation](https://github.com/filecoin-project/eudico/blob/bb52565105f7fe716463b1e09dad7492569089f5/chain/consensus/actors/reward/reward_actor.go#L94)).
 
 Validators in subnets are exclusively rewarded in native-tokens through message fees, so the balance of the `RewardActor` in subnets is only used to increase the circulating supply in a subnet by order of the `SCA`. For new native tokens to be minted in a subnet, the same amount of tokens need to have been locked in the `SCA` of the parent.
 
@@ -870,7 +870,7 @@ type ResolveMsg struct {
 ### Data availability
 Peers requesting content from others subnets trust that the peers in the other network from which a checkpoint with cross-net messages has been propagated will resolve the content resolution requests sent to the subnet. Intuitively, the node that triggered the cross-net message has no incentive on denying access to this data (as his funds have already been burnt), but data availability is an issue that is worth addressing further. The aforementioned design of the content resolution protocol assumes at least _one honest participant in the subnet_ (i.e. a peer that always answers successfully to content resolution requests) _and that the data in the subnet is always available_. In a real environment these assumption may not hold, and more complex schemes may be needed to incentivize subnet peers and ensure that every content resolution request between subnets is fulfilled, and a high-level of availability of data.
 
-To overcome this issue, `SCA` in subnets include the `Save()` function and peers will implement a protocol to backup the state of the function in any storage system where data can be retrievable and available independently of the state of a subnet (let this be Filecoin storage, IPFS, or any other decentralized or centralized storage systems). Having the state always available is key for:
+To overcome this issue, `SCA` in subnets include the `Save()` function and peers implement a protocol to backup the state of the function in any storage system where data can be retrievable and available independently of the state of a subnet (let this be Filecoin storage, IPFS, or any other decentralized or centralized storage systems). Having the state available is key for:
 - The execution and validations of cross-net messages.
 - Creating fraud/fault proofs from detectable misbehaviors in a subnet.
 - Migrating the state of a subnet and spawning a new subnet from the existing state of another network.
