@@ -964,7 +964,7 @@ Validators' `CrossMsgPool`s also listen for new `BottomUpMsgsMeta` being include
 - Gets `CrossMsgMeta.Cid` and makes a request to the subnet content resolution protocol to resolve the `CrossMsgs` behind that `CrossMsgMeta`. These requests are directed to the subnet in `Source` and they resolve the CID from the subnet's `CrossMsgsRegistry`. 
     - If the resolved `CrossMsgs` only includes elements in the `Msgs` field, they can be directly proposed in the next block for their execution.
     - If this is not the case, and `CrossMsgs` includes in its `Meta` field `CrossMsgMetas` from its children, then these `CrossMsgsMeta` need to be resolved recursively until all the `CrossMsgsMeta` have been successfully resolved to their underlying messages.
-- Then, as it happened for top-down messages, when the `CrossMsgPool` has all the bottom-up messages to be applied, it waits for a `FinalityThreshold` before proposing the messages to be sure that the checkpoint commitment can be considered final, and all the resolved cross-net messages are proposed for their inclusion and subsequent execution. 
+- Then, as it happened for top-down messages, once the `CrossMsgPool` has all the bottom-up messages to be applied, it waits for a `FinalityThreshold` (so as to be sure that the checkpoint commitment can be considered final), after which all resolved cross-messages are proposed for inclusion and subsequent execution.
 
 ![](https://hackmd.io/_uploads/Bkrzj2uF5.png)
 
