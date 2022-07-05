@@ -1,4 +1,4 @@
-
+Hierarchical Consensus Spec
 ===
 
 > This document includes the latest version of the hierarchical consensus spec along with the relevant FIPs to be proposed to the Filecoin community.
