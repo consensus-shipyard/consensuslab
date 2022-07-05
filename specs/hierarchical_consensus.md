@@ -55,12 +55,12 @@ Each section of the spec must be stable and audited before it is considered done
 [Bottom-up messages](#Bottom-up-messages "Bottom-up messages") | Reliable | No | |__FIP__ |
 [Path messages](#Path-messages "Path messages") | Reliable | No | |__FIP__|
 [Subnet Content Resolution Protocol](#Subnet-Content-Resolution-Protocol "Subnet Content Resolution Protocol") | Reliable | No | |__FIP__ |
+[Cross-net routing gas price](#Cross-net-routing-gas-price "Cross-net routing gas price") | WIP/Draft |   | |N/A |
 [Resolution approaches](#Resolution-approaches "Resolution approaches") | Reliable | No | |__FIP__ |
 [Data availability](#Data-availability "Data availability") | WIP/Draft |  | |N/A |
 [Atomic Execution Protocol](#Atomic-Execution-Protocol "Atomic Execution Protocol") | Reliable | No | |__FIP__|
 [Collateral and slashing](#Collateral-and-slashing "Collateral and slashing") | WIP/Draft |  | |N/A |
 [Detectable misbehaviors](#Detectable-misbehaviors "Detectable misbehaviors") | WIP/Draft |   | |N/A |
-[Cross-net routing gas price](#Cross-net-routing-gas-price "Cross-net routing gas price") | WIP/Draft |   | |N/A |
 
 ## Introduction
 At a high level, hierarchical consensus (HC) allows for incremental, on-demand blockchain scaling and simplifies the deployment of new use cases with clearly isolated security domains that provide flexibility for varied use cases.
@@ -872,7 +872,7 @@ In order for a new checkpoint to be accepted for commitment in `SCA`, the source
 When spawned, subnets are allowed to configure the `CheckPeriod` that better suits their needs and the specifics of their consensus algorithm.
 
 ### Checkpoint commitment
-As an example, lets consider a checkpoint for subnet `/root/f0100/f0200`. Every `CheckPeriod` (in terms of subnet block time), validators access the checkpoint template that needs to be signed and populated by calling the `CheckpointTemplate()` state accessor from `SCA` in `/root/f0100/f0200`. Once signed and populated, checkpoints from `/root/f0100/f0200` are submitted to the `SA` with ID `f0200` of subnet `/root/f0100` by sending a message to `SubmitCheckpoint()`. After performing the corresponding checks and waiting for the commitment conditions (i.e. `2/3` of the validators sending a signed checkpoint in its reference implementation), this actor then triggers a message to `/root/f0100` `SCA`'s `CommitChildCheckpoint()` function to commit the checkpoint.
+As an example, lets consider a checkpoint for subnet `/root/f0100/f0200`. Every `CheckPeriod` (in terms of subnet block time), validators access the checkpoint template that needs to be signed and populated by calling the `CheckpointTemplate()` state accessor from `SCA` in `/root/f0100/f0200`. Once signed and populated, checkpoints from `/root/f0100/f0200` are submitted to the `SA` with ID `f0200` of subnet `/root/f0100` by sending a message to `SubmitCheckpoint()`. After performing the corresponding checks and waiting for the commitment conditions (i.e. `+2/3` of the validators sending a signed checkpoint in its reference implementation), this actor then triggers a message to `/root/f0100` `SCA`'s `CommitChildCheckpoint()` function to commit the checkpoint.
 
 When the checkpoint is committed, the `SCA` in `/root/f0100` is responsible for aggregating the checkpoint from `/root/f0100/f0200` with those of other children of `/root/f0100`, and for generating a new checkpoint for `/root/f0100`, which is then propagated to its parent chain, `/root`. The commitment of checkpoints also triggers the execution and propagation of cross-net messages. As checkpoints flow up the chain, the `SCA` of each chain picks up these checkpoints and inspects them to propagate potential state changes triggered by messages included in the cross-net messages that have the `SCA`'s subnet as a destination subnet (see [Cross-net messages](#Cross-net-messages "Cross-net messages")).
 
@@ -985,9 +985,25 @@ Validators in subnets are exclusively rewarded in native-tokens through message 
 
 On the other hand, bottom-up messages release funds from a subnet, thereby reducing its circulating supply. In this case, burning the funds from the subnet is straightforward. When the bottom-up messages are included in a checkpoint, the `SCA` triggers a message with the `value` amount of native-tokens to the `BurnActorAddress` of the subnet. Once the checkpoint is committed to the parent, and the messages executed, the same amount of native tokens will be released from the parent's `SCA` and sent in a message to the destination addresses of the bottom-up messages.
 
+### Cross-net routing gas price
+Cross-net messages from a source subnet, `sn_src`, to some other subnet in the hierarchy,`sn_dest`, need to be provided with enough gas for the message to be executed and routed successfully by every subnet in the path `Path(sn_src, sn_dest)`. Cross-net messages within a subnet are treated like any other message, and their execution triggers some state change that costs a certain amount of gas in the subnet, `gas_cost_sn`. The main difference for cross-net messages is that this execution and state change may translate into the propagation of the message to the next subnet in the path. However, for a user to be able to provide the message with enough tokens to pay for the gas, it needs to have a sense of the cost of execution in each subnet in the path.
+
+To improve the UX and make cross-net gas costs more predictable, each subnet publishes basic parameters of their gas model at spawning time: 
+- `gas_model_type` (if based on miner tipping, EIP1559-like, etc.)
+- `curr_base_fee` (if any)
+
+> TODO: A general gas model that can configurable by subnets is currently being designed. This model will determine the specific parameters available for users and applications to determine the right amount of gas that they need to provide cross-net messages.
+
+With this information, the source of the cross-net message includes a `gas_fee_limit_array` of `gas_fee_limit` amounts that the message is willing to allocate to each subnet in the hop. Subnets in the path won't be able to charge over the specified `gas_fee_limit` assigned for them. When a cross-net reaches a subnet for which `gas_fee_limit` is insufficient, it fails and an error message is propagated back to the source, along with the unspent gas. Thus, the total amount of tokens to be provided to a cross-net message is `msg_exec_fee + routing_fee = msg.value + (msg.gas_price * msg.gas_limit) + sum(gas_fee_limit in gas_fee_limit_array)`.
+
+If after the execution of the cross-net message in the destination there are pending fees that haven't been spent, they are deposited in the balance of the source address in the destination subnet.
+
+> TODO: Tracking all the balance leftovers left behind in different subnets as a consequence of the execution of cross-net messages can be a nightmare for users and applications. It'd be great if we can come up with an efficient way to returns these leftovers to the address of the originator in the source subnet (i.e. the one that funded the message initially).
+
+If a subnet wants to change the parameters of its gas model, it'll need to spawn a new subnet and migrate its traffic there. This prevents subnets from being able to manipulate their gas model and charge different gas costs from the ones publically advertised and harming message flow (e.g. forcing gas messages to run out of gas). Ideally, these public gas model parameters used to predict the total gas of a message as a cross-net message traverse a subnet can be extracted from the general crypto-econ model CEL is working on for the root network (and that will be extrapolated as a configurable general model for subnets).
     
 ## Subnet Content Resolution Protocol
-For scalability reasons, when the destination subnet receives a new checkpoint with cross-net messages to be executed, it is only provided with the `CID` of the aggregated messages inside the `CrossMsgMeta`. For the subnet to be able to trigger the corresponding state changes for all the messages, it needs to fetch the payload of messages behind that `CID`, as illustrated in previous sections. The subnet `SCA` where the bottom-up message is generated keeps a `CrossMsgsRegistry` with all `CID`s for `CrossMsgsMeta` propagated (i.e. a content-addressable key-value store), used to fulfill content resolution requests.
+For scalability reasons, when the destination subnet receives a new checkpoint with cross-net messages to be executed, it is only provided with the `CID` of the aggregated messages inside the `CrossMsgMeta`. For the subnet to be able to trigger the corresponding state changes for all the messages, it needs to fetch the payload of messages behind that `CID`, as illustrated in previous sections. The subnet `SCA` where the bottom-up message is generated keeps a `CrossMsgsRegistry` with `CID`s for all `CrossMsgsMeta` propagated (i.e. a content-addressable key-value store). This registry is used to fulfill content resolution requests.
 
 Every subnet runs a specific pubsub topic dedicated to exchange Subnet Content Resolution messages. This topic always has the following ID: `/fil/resolver/<subnet_ID>`. So when a subnet receives a `CrossMsgMeta`, it only needs to tailor a query to the topic of the source subnet of the `CrossMsgMeta` for the `CID` of the messages included in it to resolve the messages.
 
@@ -1001,7 +1017,7 @@ The subnet content resolution protocol can be extended to resolve arbitrary cont
 ### Resolution approaches
 The protocol implements two approaches to resolve content: 
 
-- A __push__ approach, where, as the checkpoints and `CrossMsgMetas` move up the hierarchy, miners publish to the pubsub topic of the corresponding subnet the whole tree of `CrossMsgs` behind the `CrossMsgsMeta` `CID` including all the messages targeting that subnet. To push the message, the content resolver manager publishes a `Push` message in the resolver topic of the destination subnets specifying the type of content being pushed along with its CID. When new checkpoints are committed, source subnet's proactively push the content to the destination subnets for which `CrossMsgsMeta` have been included in the checkpoint. When validators and full nodes in the subnet come across these `Push` messages, they may choose to pick them up and cache/store them locally for when the checkpoint with the `CrossMsgsMeta` directed to them arrives, or discard them (in which case, they will need to explicitly resolve the content when required).
+- A __push__ approach, where, as the checkpoints and `CrossMsgMetas` move up the hierarchy, miners publish to the pubsub topic of the corresponding subnet the whole tree of `CrossMsgs` behind the `CrossMsgsMeta` `CID`, which includes all the messages targeting that subnet from a specific source. To push the message, the content resolution manager publishes a `Push` message in the resolver topic of the destination subnets specifying the type of content being pushed along with its CID. When new checkpoints are committed, source subnet's proactively push the content to the destination subnets for which `CrossMsgsMeta` have been included in the checkpoint. When validators and full nodes in the subnet come across these `Push` messages, they may choose to pick them up and cache/store them locally for when the checkpoint with the `CrossMsgsMeta` directed to them arrives, or discard them (in which case, they will need to explicitly resolve the content when required).
 
 - A __pull__ approach, where, upon a destination subnet receiving a checkpoint with cross-net messages directed to it, miners' `CrossMsgsPool`s publish a `Pull` message in the source subnet's pubsub topic to resolve the cross-net messages for the specific `CID`s found in the tree of cross-net message meta. These requests are answered by publishing a new  resolve message in the requesting subnet with the corresponding content resolution. The source subnet answers to the resolver topic of the subnet originating the request with a `ResponseMeta` message including the resolution of the `CID`. This new broadcast of a content resolution to the subnet's pubsub channels gives every cross-net message pool a new opportunity to store or cache the content behind a `CID` even if they do not yet need it.
 
@@ -1014,7 +1030,7 @@ All these approaches to content resolution include safe-guards to prevent DoS at
 - Peers sending requests for non-existing `CID`s for a subnet are penalized.
 - All `Response` and `Push` messages are self-certified. Peers sending content that doesn't correspond to the `CID` included in the message are penalized. 
 
-> Content Resolver Message Types
+> Content Resolution Message Types
 ```go
 type MsgType enum (
     // PushMeta content to other subnet
@@ -1274,16 +1290,3 @@ In order to report an invalid state transition in a subnet, users need to submit
 Thus, if an invalid state transition happens at block `n`, and the latest committed checkpoint was at block `n-x`, a user looking to report the misbheavior needes to submit to the SCA of the parent the chain of `x` blocks from `n-x` to `n` so the state can be replayed and the invalid state transition checked.
 >Note: Along with the checkpoint at `n-x` a snapshot of the state at `n-x` may also need to be provided to enable the whole state of the subnet (for every contract) to be replayed.
 
-## Cross-net routing gas price
-> WIP. This is just a placeholder for this section. The content included is not final. Follow all design updates [here](https://hackmd.io/HpxNIaacTn2_t6jaDs9RcQ)
-
-Cross-net messages from a source subnet, `sn_src`, to some other subnet in the hierarchy,`sn_dest`, need to be provided with enough gas for the message to be executed and routed successfully by every subnet in the path `Path(sn_src, sn_dest)`. Cross-net messages within a subnet are treated like any other message, and their execution triggers some state change that costs a certain amount of gas in the subnet, `gas_cost_sn`. The main difference for cross-net messages is that this execution and state change may translate into the propagation of the message to the next subnet in the path. However, for a user to be able to provide the message with enough gas, it needs to have a sense of the cost of execution in each subnet in the path.
-
-To improve the UX and make cross-net gas costs more predictable, each subnet publishes basic parameters of their gas model at spawning time: 
-- `gas_model_type` (if based on miner tipping, EIP1559-like, etc.)
-- `curr_base_fee` (if any)
-- etc.
-
-With this information, cross-net message will include an array of `gas_limit` amounts that the message is willing to allocate to each subnet in the hop. Subnets in the path won't be able to charge over the specified `gas_limit` for the subnet. When a cross-net reaches a subnet for which `gas_limit` is insufficient, it fails and an error message is propagated back to the source, along with the unspent gas.
-
-If a subnet wants to change the parameters of its gas model, it'll need to spawn a new subnet and migrate its traffic there. This prevents subnets from being able to manipulate their gas model and charge different gas costs from the ones publically advertised and harming message flow (e.g. forcing gas messages to run out of gas). Ideally, these public gas model parameters used to predict the total gas of a message as a cross-net message traverse a subnet can be extracted from the general crypto-econ model CEL is working on for the root network (and that will be extrapolated as a configurable general model for subnets).
