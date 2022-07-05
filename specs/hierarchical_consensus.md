@@ -48,8 +48,8 @@ Each section of the spec must be stable and audited before it is considered done
 [Checkpoint Commitment](#Checkpoint-Commitment "Checkpoint Commitment") | Reliable | No | | __FIP__ |
 [Checkpoints data structure](#Checkpoints-data-structure "Checkpoints data structure") | Reliable | No | | __FIP__ |
 [Cross-net messages](#Cross-net-messages "Cross-net messages") | Reliable | No | |__FIP__ |
-[cross-net message pool](#cross-net message-pool "cross-net message pool") | Reliable | No | |__FIP__ |
-[cross-net message execution](#cross-net message-execution "cross-net message execution") | Reliable | No | |__FIP__ |
+[cross-net message pool](#cross-net-message-pool "cross-net message pool") | Reliable | No | |__FIP__ |
+[cross-net message execution](#cross-net-message-execution "cross-net message execution") | Reliable | No | |__FIP__ |
 [Minting and Burning native tokens](#Minting-and-burning-native-tokens-in-subnets) | Reliable | No | | __FIP__ |
 [Top-down messages](#Top-down-messages "Top-down messages") | Reliable | No | |__FIP__ |
 [Bottom-up messages](#Bottom-up-messages "Bottom-up messages") | Reliable | No | |__FIP__ |
