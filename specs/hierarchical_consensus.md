@@ -4,7 +4,7 @@ Hierarchical Consensus Spec
 > This document includes the latest version of the hierarchical consensus spec along with the relevant FIPs to be proposed to the Filecoin community.
 
 ## Revisions
-- `2022-06-14`: Basic structure and WIP 
+- `2022-06-14`: Basic structure and WIP
 - `2022-06-17`: Draft for up to cross-net messages.
 - `2022-06-20`: Content resolution and atomic execution protocols. Detectable misbehaviors.
 - `2022-06-21`: First draft with all sections and linking [FIP draft](https://hackmd.io/gBmBo6ChQ4ajqN8RtKdJ9A).
