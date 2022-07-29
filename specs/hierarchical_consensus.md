@@ -946,8 +946,8 @@ Bottom-up messages are created by sending a message to the `Release()` or `SendC
 Whenever a new bottom-up message is triggered in a subnet, its `SCA`:
 - Burns the amount of native tokens included in the `value` of the message in the subnet.
 - Checks the checkpoint being populated in the current checkpoint window and checks if it already has a `CrossMsgMeta` with the same destination of the message.
-    - If the `CrossMsgMeta` doesn't exist in the checkpoint, creates a new `CrossMsgs` appending the cross-net message in the `CrossMsgsRegistry` of the `SCA`, and includes in the checkpoint a new `CrossMsgMeta` for the destination including the `CID` of the `CrossMsgs` stored in the registry.
-    - If the `CrossMsgMeta` for the destination exists in the checkpoint, gets from the `CrossMsgsRegistry` the current `CID` included in the `CrossMsgMeta`, and it appends the newly created cross-net message to `Msgs`. The `SCA` then updates with the new `CID` (after appending the message) to the `CrossMsgMeta` for the checkpoint, deletes the outdated `CrossMsgs` from the registry, and includes the updated one.
+    - If the `CrossMsgMeta` doesn't exist in the checkpoint, the `SCA` creates a new `CrossMsgs` appending the cross-net message in the `CrossMsgsRegistry` of the `SCA`, and includes in the checkpoint a new `CrossMsgMeta` for the destination including the `CID` of the `CrossMsgs` stored in the registry.
+    - If the `CrossMsgMeta` for the destination exists in the checkpoint, the `SCA` gets from the `CrossMsgsRegistry` the current `CID` included in the `CrossMsgMeta`, and it appends the newly created cross-net message to `Msgs`. The `SCA` then updates with the new `CID` (after appending the message) to the `CrossMsgMeta` for the checkpoint, deletes the outdated `CrossMsgs` from the registry, and includes the updated one.
     - In these updates, the total amount of native tokens included in the messages of the `CrossMsgMeta` is also updated in the `Value` field.
 - Finally, when the signing window for the checkpoint closes, the checkpoint is propagated including a link to the cross-net message in the `CrossMsgMeta` of the checkpoint.
 
