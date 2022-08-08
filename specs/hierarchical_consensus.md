@@ -898,8 +898,8 @@ As shown on the next figure, the checkpointing protocol has two distinct stages:
 ## Cross-net messages
 Users in a subnet interact with other subnets through cross-net transactions (or messages). The propagation of a cross-net transaction may slightly differ depending on the location of subnets in the hierarchy (i.e. if moving up or down the hierarchy). In particular, we distinguish the following type of cross-net messages:
 
-- __Top-down messages__ _(brown)_ are cross-net messages directed towards a subnet that is lower in the hierarchy (e.g. from `/root/f0100` to `/root/f0200`).
-- __Bottom-up  messages__ _(green)_ are cross-net messages directed towards a subnet that is higher in the hierarchy but shares the same prefix (e.g  from  `/root/f0100/f0200` to `root/f0100`).
+- __Top-down messages__ _(brown)_ are cross-net messages directed towards a subnet that is lower in the hierarchy (e.g. from `/root` to `/root/t02`).
+- __Bottom-up  messages__ _(green)_ are cross-net messages directed towards a subnet that is higher in the hierarchy but shares the same prefix (e.g  from  `/root/t01` to `/root`).
 - __Path messages__ _(pink)_. Every message routed in the hierarchy can be seen as a combination of top-down and bottom-up transactions. Path messages are cross-net messages in which the source and destination subnets are not in the same branch. These are propagated through bottom-up messages (i.e. `CrossMsgMeta` in checkpoints) up to the common parent (`/root`, in the worst case) and through top-down messages from there to the destination.
 
 ![](https://hackmd.io/_uploads/r1af_cd99.png)
