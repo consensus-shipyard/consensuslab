@@ -29,7 +29,7 @@ Trantor implements TOB in 4 stages:
    each correct node outputs a batch of transactions (including payload).
 
 Trantor's high-level architecture is depicted in the figure below.
-![Trantor's high-level architecture](https://hackmd.io/_uploads/ry7WRvTri.png)
+![Trantor's high-level architecture](trantor/architecture.png)
 
 
 > **Note on code snippets:** Code snippets in this document are intended
@@ -128,7 +128,7 @@ For simplicity of presentation, we omit events and modules related to reconfigur
 technical events like sending / receiving network messages or timer events.
 
 > TODO: Update the image
-![Trantor's Mir-based implementation schema](https://hackmd.io/_uploads/HkQKqI71o.png)
+![Trantor's Mir-based implementation schema](trantor/components.png)
 
 We now describe the components and their workings in more detail.
 
@@ -257,7 +257,7 @@ the system deterministically performs de-duplication on the sequence of delivere
 > TODO: Check if the link works and fix it if it doesn't.
 
 Note that even if a transaction is referenced by multiple availability certificates,
-once a node has received it, the node can use it with all the associated certificates without further retransmission. 
+once a node has received it, the node can use it with all the associated certificates without further retransmission.
 
 The positive effect of such "inexpensive" duplication (of hashes, not payloads) is resistance to censorship.
 Since every node's proposal can refer to any transaction,
@@ -366,7 +366,7 @@ type EpochConfig struct {
 	EpochNr    int
     FirstSN    int
     Length     int
-    Membership []NodeInfo 
+    Membership []NodeInfo
 }
 
 type ClientID <lotus_wallet_address_type>
@@ -396,7 +396,7 @@ and opaque application (Eudico) transactions and related components are in yello
 Green components do not distinguish between configuration and application.
 The taking and restoring of state snapshots is not depicted for simplicity of presentation.
 If it were, however, the corresponding events would also be part of the incoming event stream, just like `NewEpoch`.
-![State manager's internal operation](https://hackmd.io/_uploads/rydsAsQ1j.png)
+![State manager's internal operation](trantor/space-manager.png)
 
 
 ### Merit (block reward)
@@ -522,7 +522,7 @@ their network addresses, and potentially other protocol-specific configuration p
 ```go
 type Configuration struct {
     Membership []NodeInfo
-    
+
     //... potentially more fields
 }
 ```
