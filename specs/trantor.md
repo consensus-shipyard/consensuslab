@@ -396,7 +396,7 @@ and opaque application (Eudico) transactions and related components are in yello
 Green components do not distinguish between configuration and application.
 The taking and restoring of state snapshots is not depicted for simplicity of presentation.
 If it were, however, the corresponding events would also be part of the incoming event stream, just like `NewEpoch`.
-![State manager's internal operation](trantor/space-manager.png)
+![State manager's internal operation](trantor/state-manager.png)
 
 
 ### Merit (block reward)
