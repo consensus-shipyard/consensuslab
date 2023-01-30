@@ -1,17 +1,14 @@
 ---
-name: 🎯 Milestone
+name: "\U0001F3AF Milestone"
 about: Tracking a sub-project milestone?
-title: "🎯 | PROJECT_TITLE-MILESTONE_CODE: MILESTONE_TITLE"
-labels: "🎯 Milestone"
-assignees: ""
+title: "\U0001F3AF | PROJECT_TITLE-MILESTONE_CODE: MILESTONE_TITLE"
+labels: "\U0001F3AF Milestone"
+assignees: ''
 
 ---
 
-**For work tracking purposes.**
+## Description
 
-Refer to the parent project issue for high-level discussion and resources.
-
-<!--TODO-->
-<!--Assign the issue to the team-->
-<!--Assign the issue to the parent project.-->
-<!--Convert this issue into an Epic in ZenHub and set dates. Associate respective tasks to it using the Epic feature.-->
+## Roadmap
+<!-- fill in date for starmap -->
+ETA:

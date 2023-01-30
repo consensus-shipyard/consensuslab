@@ -1,9 +1,9 @@
 ---
-name: 💼 Admin
+name: "\U0001F4BC Admin"
 about: Handling an administrative task?
-title: "💼 | TASK_TITLE"
-labels: "💼 Admin"
-assignees: ""
+title: "\U0001F4BC | TASK_TITLE"
+labels: "\U0001F4BC Admin"
+assignees: ''
 
 ---
 

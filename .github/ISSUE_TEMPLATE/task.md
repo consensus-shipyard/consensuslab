@@ -1,9 +1,9 @@
 ---
-name: ✅ Task
+name: "✅ Task"
 about: Creating a new task (stand-alone or as part of a project)?
 title: "✅ | TASK_TITLE"
 labels: "✅ Task"
-assignees: ""
+assignees: ''
 
 ---
 

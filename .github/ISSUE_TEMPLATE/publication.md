@@ -1,9 +1,9 @@
 ---
-name: 📰 Publication
+name: "\U0001F4F0 Publication"
 about: Drafting a publication?
-title: "📰 | PUBLICATION_TITLE"
-labels: "📰 Publication"
-assignees: ""
+title: "\U0001F4F0 | PUBLICATION_TITLE"
+labels: "\U0001F4F0 Publication"
+assignees: ''
 
 ---
 

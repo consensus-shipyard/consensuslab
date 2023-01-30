@@ -1,9 +1,9 @@
 ---
-name: 🎫 Event
+name: "\U0001F3AB Event"
 about: Organising an event?
-title: "🎫 | YYYY-MM-DD EVENT_NAME"
-labels: "🎫 Event"
-assignees: ""
+title: "\U0001F3AB | YYYY-MM-DD EVENT_NAME"
+labels: "\U0001F3AB Event"
+assignees: ''
 
 ---
 

@@ -1,9 +1,9 @@
 ---
-name: 🤝 Research Collab
+name: "\U0001F91D Research Collab"
 about: A new exciting collaboration?
-title: "🤝 | TITLE"
-labels: "🤝 Collab"
-assignees: ""
+title: "\U0001F91D | TITLE"
+labels: "\U0001F91D Collab"
+assignees: ''
 
 ---
 

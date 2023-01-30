@@ -1,12 +1,11 @@
 ---
-name: 🚧 Project
+name: "\U0001F6A7 Project"
 about: Tracking a project?
-title: "🚧 | PROJECT_CODE: PROJECT_TITLE"
-labels: "🚧 Project"
-assignees: ""
----
+title: "\U0001F6A7 | PROJECT_CODE: PROJECT_TITLE"
+labels: "\U0001F6A7 Project"
+assignees: ''
 
-<!-- By default, project issues are public. Refrain from including private information. If you want to keep the project private, add the private label -->
+---
 
 ## Description
 <!--describe the project here -->
@@ -17,10 +16,11 @@ assignees: ""
 ## Dependencies
 <!--describe the project here -->
 
+## Roadmap
+<!--add ETA and child milestones for starmap -->
+ETA: 
+
+Children:
+
 ## Resources
 <!--list the existing resources on this project (plans, roadmaps, github repos, etc-->
-
-<!--TODO-->
-<!--Assign the issue to the team-->
-<!--Convert this issue into an Epic in ZenHub and set dates. Associate respective tasks to it using the Epic feature.-->
-<!--Create milestones as sub-epics and set dates.-->
