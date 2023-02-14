@@ -12,14 +12,7 @@ ConsensusLab’s short to mid-term focus is on rearchitecting and implementing F
 
 ## Research Endeavours
 
-Our work is divided into three main areas. We have a tracking issue for each:
-* [Blue: Hierarchical Consensus](https://github.com/protocol/ConsensusLab/issues/3)
-* [Yellow: General Consensus Layer](https://github.com/protocol/ConsensusLab/issues/2)
-* [Green: VM / Runtime](https://github.com/protocol/ConsensusLab/issues/1)
-
-For each of our active projects, you'll be able to find resources, talks, demos, and notes from our weekly stand-ups.
-
-We also have a detailed [ZenHub roadmap](https://app.zenhub.com/workspaces/consensuslab-60f84a7fa2395a0011e4134c/roadmap?invite=true), which will give you a bird's eye view of all of our projects. If you install the [ZenHub browser extension](https://www.zenhub.com/extension), you'll have a much better time navigating this repo.
+Our current research directions can be seen in our [roadmap](https://github.com/protocol/ConsensusLab/issues/191).
 
 ## Team, Publications, Talks, and Demos
 
@@ -35,4 +28,4 @@ We work in the open! Take part in our [discussions](https://github.com/protocol/
 
 ## Join us
 
-We are working to expand the team with Research Scientists and Research Engineers. Visit PL's [job page](https://protocol.ai/join/) to learn more and apply.
+We occasionally hire for roles at ConsensusLab. Visit PL's [job page](https://protocol.ai/join/) to learn more and apply.
