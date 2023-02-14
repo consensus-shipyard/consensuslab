@@ -10,6 +10,8 @@ ConsensusLab’s vision is to be the go-to place for scalable decentralised cons
 
 ConsensusLab’s short to mid-term focus is on rearchitecting and implementing Filecoin consensus in a scalable way so it can be used in Filecoin, supporting current Filecoin actors and beyond. The project will not incrementally upgrade existing Filecoin consensus but re-implement consensus layer from scratch in a secure, modular, scalable and upgradable way.
 
+Visit [consensuslab.world](https://consensuslab.world/) to learn more about our us.
+
 ## Research Endeavours
 
 Our current research directions can be seen in our [roadmap](https://github.com/protocol/ConsensusLab/issues/191).
